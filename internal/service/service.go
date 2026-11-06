@@ -48,14 +48,13 @@ func NewService(configPath string) (*WinCronService, error) {
 	exec := executor.NewExecutor(appCfg.LogDir)
 	exec.StartLogCleanup(appCfg.LogRetentionDays)
 
-	// 创建通知器并接入 SMTP 配置。
-	// 此前 notify.NewNotifier() 之后没有任何地方调用 SetSMTPConfig，
-	// 导致 emails 配了也永远不发；这里补齐接线。
-	notifier := notify.NewNotifier()
-	notifier.SetSMTPConfig(appCfg.SMTPHost, appCfg.SMTPPort, appCfg.SMTPUser, appCfg.SMTPPass)
+	// 通知渠道全部由 nikoksr/notify 的 service 提供。
+	// 渠道按名称定义在 app.notify_channels，任务只引用名称；
+	// 配置热加载时由 scheduler 的 onReload 回调统一重建。
+	notifier := notify.NewNotifier(appCfg.NotifyChannels, appCfg.NotifyTimeout, nil)
 
 	sched := scheduler.NewScheduler(cm, exec, notifier)
-	webServer := web.NewServer(cm, sched, exec, appCfg.WebPort)
+	webServer := web.NewServer(cm, sched, exec, notifier, appCfg.WebPort)
 
 	return &WinCronService{
 		configManager: cm,
@@ -90,6 +89,10 @@ func (p *Program) Stop(s service.Service) error {
 	}
 	if p.svc.executor != nil {
 		p.svc.executor.Close()
+	}
+	// 等在途通知发完再退出，否则服务停止时最后一条失败告警会丢。
+	if p.svc.notifier != nil {
+		p.svc.notifier.Wait()
 	}
 	return nil
 }
@@ -184,6 +187,10 @@ func RunAsService(configPath string) error {
 		log.Printf("[WinCron] 无法获取服务日志: %v\n", err)
 	} else {
 		prog.svc.logger = logger
+		// Session 0 没有控制台，通知失败必须写进服务日志才看得见。
+		prog.svc.notifier.SetLogger(func(format string, args ...any) {
+			_ = logger.Errorf(format, args...)
+		})
 	}
 
 	if err := s.Run(); err != nil {

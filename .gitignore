@@ -3,6 +3,8 @@ crontab.json
 logs/
 *.log
 crontab.json.tmp
+# 旧通知配置升级前的逐字节备份，可能含旧版明文 SMTP 密码
+crontab.json.pre-notify.bak
 
 # 构建产物
 *.exe

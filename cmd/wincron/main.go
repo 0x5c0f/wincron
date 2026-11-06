@@ -96,6 +96,8 @@ func main() {
 		runDoctor(configPath, testCommand)
 	case "validate":
 		validateConfig(configPath)
+	case "notify":
+		notifyCommand(configPath, posArgs)
 	case "version":
 		fmt.Printf("WinCron v%s\n", version)
 	case "help", "-h", "--help":
@@ -187,6 +189,7 @@ func printUsage() {
   run         前台运行（调试模式，不注册为服务）
   reload      立即触发服务重载（只更新文件时间戳，不改内容）
   validate    检查配置文件里的任务是否合法
+  notify      查看通知渠道状态 / 测试发送 / 列出支持的渠道类型
 
 任务管理命令:
   list        列出所有任务，并提示配置问题
@@ -457,8 +460,7 @@ func buildJobFromInput(in addInput) config.JobConfig {
 		Notify: config.NotifyConfig{
 			OnSuccess: false,
 			OnFailure: false,
-			Webhooks:  []string{},
-			Emails:    []string{},
+			Channels:  []string{},
 		},
 		Env: map[string]string{},
 	}

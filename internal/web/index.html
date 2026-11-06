@@ -123,6 +123,7 @@
             <button id="tabJobs" class="tab active" onclick="switchTab('jobs', this)">任务列表</button>
             <button id="tabLogs" class="tab" onclick="switchTab('logs', this)">执行日志</button>
             <button id="tabDoctor" class="tab" onclick="switchTab('doctor', this)">运行环境</button>
+            <button id="tabNotify" class="tab" onclick="switchTab('notify', this)">通知渠道</button>
         </div>
 
         <div id="jobsPanel" class="panel">
@@ -161,6 +162,16 @@
                 </div>
             </div>
             <div class="panel-body" id="logsBody">
+                <div class="empty">加载中...</div>
+            </div>
+        </div>
+
+        <div id="notifyPanel" class="panel" style="display:none;">
+            <div class="panel-header">
+                <h2>通知渠道 <span style="font-size:12px;color:#888;font-weight:400;">由 nikoksr/notify 提供实现</span></h2>
+                <button class="btn btn-default btn-sm" onclick="loadNotifyChannels()">刷新</button>
+            </div>
+            <div class="panel-body" style="padding:16px 20px;" id="notifyBody">
                 <div class="empty">加载中...</div>
             </div>
         </div>
@@ -218,8 +229,24 @@
                 </div>
             </div>
             <div class="form-group">
-                <label>失败时通知Webhook（多个用逗号分隔）</label>
-                <input type="text" id="jobWebhooks" placeholder="例如：https://example.com/hook">
+                <label>通知时机</label>
+                <div style="display:flex; gap:24px; padding:6px 2px; font-weight:400;">
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                        <input type="checkbox" id="jobNotifyFailure"> 失败时通知
+                    </label>
+                    <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+                        <input type="checkbox" id="jobNotifySuccess"> 成功时通知
+                    </label>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>通知渠道</label>
+                <div id="jobNotifyChannels" style="padding:6px 2px; max-height:120px; overflow-y:auto; font-weight:400; color:#666;">
+                    加载中...
+                </div>
+                <div style="font-size:12px; color:#999; font-weight:400; margin-top:4px;">
+                    渠道在 crontab.json 的 app.notify_channels 中定义；可在「通知渠道」页查看状态与测试发送。
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-default" onclick="closeModal()">取消</button>
@@ -434,8 +461,77 @@
             document.getElementById('jobsPanel').style.display = tab === 'jobs' ? 'block' : 'none';
             document.getElementById('logsPanel').style.display = tab === 'logs' ? 'block' : 'none';
             document.getElementById('doctorPanel').style.display = tab === 'doctor' ? 'block' : 'none';
+            document.getElementById('notifyPanel').style.display = tab === 'notify' ? 'block' : 'none';
             if (tab === 'logs') loadLogs();
             if (tab === 'doctor') loadDoctor();
+            if (tab === 'notify') loadNotifyChannels();
+        }
+
+        // 通知渠道清单由服务端给出，只含名称/类型/状态，不含任何凭据。
+        let availableChannels = [];
+        let editingJobSnapshot = null;
+
+        async function loadNotifyChannels() {
+            const body = document.getElementById('notifyBody');
+            try {
+                const data = await api('/notify/channels');
+                availableChannels = data.channels || [];
+                const statuses = {};
+                (data.statuses || []).forEach(s => { if (s.name) statuses[s.name] = s; });
+
+                if (availableChannels.length === 0) {
+                    body.innerHTML = `<div class="empty">尚未配置通知渠道。请在 crontab.json 的 app.notify_channels 中添加。</div>
+                        <div style="margin-top:12px; font-size:13px; color:#666;">
+                            支持的类型：${escapeHtml((data.supported || []).join(' / '))}<br>
+                            可用 <code>wincron notify types</code> 查看每种类型的必填字段。
+                        </div>`;
+                } else {
+                    let html = '<table><thead><tr><th>渠道名称</th><th>类型</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+                    availableChannels.forEach(ch => {
+                        const st = statuses[ch.name];
+                        const ready = st && st.ready;
+                        html += `<tr>
+                            <td>${escapeHtml(ch.name)}</td>
+                            <td>${escapeHtml(ch.type)}</td>
+                            <td style="color:${ready ? '#2e7d32' : '#c62828'};">${ready ? '可用' : '不可用'}</td>
+                            <td><button class="btn btn-default btn-sm" data-name="${escapeHtml(ch.name)}" onclick="testNotifyChannel(this.dataset.name)" ${ready ? '' : 'disabled'}>测试发送</button></td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    (data.build_errors || []).forEach(e => {
+                        html += `<div style="color:#c62828; font-size:13px; margin-top:8px;">${escapeHtml(e)}</div>`;
+                    });
+                    body.innerHTML = html;
+                }
+                renderJobChannelChoices(currentSelectedChannels());
+            } catch (e) {
+                body.innerHTML = '<div class="empty">通知渠道加载失败</div>';
+            }
+        }
+
+        function currentSelectedChannels() {
+            return Array.from(document.querySelectorAll('#jobNotifyChannels input:checked')).map(el => el.value);
+        }
+
+        function renderJobChannelChoices(selected) {
+            const box = document.getElementById('jobNotifyChannels');
+            const chosen = new Set(selected || []);
+            if (availableChannels.length === 0) {
+                box.innerHTML = '<span style="color:#999;">未配置通知渠道</span>';
+                return;
+            }
+            box.innerHTML = availableChannels.map(ch => `
+                <label style="display:inline-flex; align-items:center; gap:6px; margin:0 16px 6px 0; cursor:pointer;">
+                    <input type="checkbox" class="job-channel" value="${escapeHtml(ch.name)}" ${chosen.has(ch.name) ? 'checked' : ''}>
+                    ${escapeHtml(ch.name)} <span style="color:#aaa;">(${escapeHtml(ch.type)})</span>
+                </label>`).join('');
+        }
+
+        async function testNotifyChannel(name) {
+            try {
+                await api('/notify/channels/' + encodeURIComponent(name) + '/test', { method: 'POST' });
+                showToast('测试通知已发送：' + name, 'success');
+            } catch (e) {}
         }
 
         function showAddModal() {
@@ -448,7 +544,10 @@
             document.getElementById('jobTimeout').value = '0';
             document.getElementById('jobMaxRetry').value = '0';
             document.getElementById('jobEnabled').value = 'true';
-            document.getElementById('jobWebhooks').value = '';
+            document.getElementById('jobNotifyFailure').checked = false;
+            document.getElementById('jobNotifySuccess').checked = false;
+            editingJobSnapshot = null;
+            renderJobChannelChoices([]);
             document.getElementById('jobModal').classList.add('active');
         }
 
@@ -464,7 +563,11 @@
             document.getElementById('jobTimeout').value = j.timeout || 0;
             document.getElementById('jobMaxRetry').value = j.max_retry || 0;
             document.getElementById('jobEnabled').value = String(j.enabled);
-            document.getElementById('jobWebhooks').value = ((j.notify && j.notify.webhooks) || []).join(',');
+            document.getElementById('jobNotifyFailure').checked = !!(j.notify && j.notify.on_failure);
+            document.getElementById('jobNotifySuccess').checked = !!(j.notify && j.notify.on_success);
+            // 保留表单没有暴露的字段（例如 env），避免「编辑一次就丢配置」。
+            editingJobSnapshot = j;
+            renderJobChannelChoices((j.notify && j.notify.channels) || []);
             document.getElementById('jobModal').classList.add('active');
         }
 
@@ -474,7 +577,7 @@
 
         async function saveJob() {
             const id = document.getElementById('jobId').value;
-            const webhooks = document.getElementById('jobWebhooks').value.split(',').map(s => s.trim()).filter(s => s);
+            const channels = currentSelectedChannels();
             const job = {
                 name: document.getElementById('jobName').value,
                 cron: document.getElementById('jobCron').value,
@@ -484,12 +587,11 @@
                 max_retry: parseInt(document.getElementById('jobMaxRetry').value) || 0,
                 enabled: document.getElementById('jobEnabled').value === 'true',
                 notify: {
-                    on_failure: webhooks.length > 0,
-                    on_success: false,
-                    webhooks: webhooks,
-                    emails: []
+                    on_failure: document.getElementById('jobNotifyFailure').checked,
+                    on_success: document.getElementById('jobNotifySuccess').checked,
+                    channels: channels
                 },
-                env: {}
+                env: (editingJobSnapshot && editingJobSnapshot.env) || {}
             };
 
             if (!job.name || !job.cron || !job.command) {
@@ -545,13 +647,15 @@
 
         function escapeHtml(str) {
             if (str === null || str === undefined) return '';
-            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
         // 初始加载
         loadAuthStatus();
         loadStatus();
         loadJobs();
+        loadNotifyChannels();
 
         // 定时刷新
         setInterval(loadStatus, 10000);

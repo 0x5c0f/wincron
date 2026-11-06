@@ -12,10 +12,38 @@
     "log_dir": "logs",
     "log_retention_days": 30,
     "enable_seconds": true,
-    "smtp_host": "",
-    "smtp_port": "587",
-    "smtp_user": "",
-    "smtp_pass": ""
+    "notify_timeout": 10,
+    "notify_channels": [
+      {
+        "name": "ops-wecom",
+        "type": "wecom",
+        "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${ENV:WINCRON_WECOM_KEY}",
+        "mentioned_mobile_list": ["@all"]
+      },
+      {
+        "name": "ops-slack",
+        "type": "slack",
+        "token": "${ENV:WINCRON_SLACK_TOKEN}",
+        "receivers": ["#ops-alerts"]
+      }
+    ]
   },
-  "jobs": []
+  "jobs": [
+    {
+      "id": "example-backup",
+      "name": "每日备份（示例）",
+      "cron": "0 2 * * *",
+      "command": "echo backup",
+      "work_dir": "",
+      "enabled": false,
+      "timeout": 0,
+      "max_retry": 0,
+      "notify": {
+        "on_success": false,
+        "on_failure": true,
+        "channels": ["ops-wecom"]
+      },
+      "env": {}
+    }
+  ]
 }

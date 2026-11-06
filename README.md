@@ -54,7 +54,7 @@ Windows 启动
   └─ SCM 启动 WinCron 服务 (Session 0, 无需任何用户登录)
        └─ cron 调度器按表达式触发
             └─ cmd /c + CREATE_NO_WINDOW 拉起 backup.bat (仍在 Session 0)
-                 └─ 输出被捕获 → logs/<任务ID>.log → 可选 Webhook / 邮件通知
+                 └─ 输出被捕获 → logs/<任务ID>.log → 可选 notify 多渠道通知
 ```
 
 ### 两层「后台」
@@ -77,7 +77,7 @@ Windows 启动
 - **配置健壮性**：UTF-8 BOM / GBK 编码自动识别，原子写入（`.tmp` + rename），启动期非法 JSON fail-fast，运行期改坏则保留上一份有效配置继续跑。
 - **任务控制**：超时终止整棵子进程树、失败重试、环境变量、工作目录、手动执行、启停开关。
 - **可观测性**：每个任务独立日志、日志保留天数自动清理、Web 执行日志页、`doctor` 运行环境诊断。
-- **通知**：成功/失败可选 Webhook 与 SMTP 邮件。
+- **多渠道通知**：通知层全部基于 [nikoksr/notify](https://github.com/nikoksr/notify)，内置 11 类渠道（企业微信、飞书、钉钉、Slack、Telegram、Bark、邮件、Teams、Discord、Pushover、通用 Webhook），按名称复用、按任务选择，支持 `${ENV:NAME}` 引用凭据、测试发送与失败可观测。
 - **中文友好**：自动把 `cmd` 的 GBK 输出转成 UTF-8，避免 Web / 日志乱码。
 - **单文件**：一个 exe 内嵌全部 Web 页面，无外部运行时依赖（`CGO_ENABLED=0`）。
 
@@ -171,6 +171,10 @@ wincron.exe uninstall
 
 浏览器访问 <http://localhost:9090>，未登录会跳转到独立登录页 `/login`。服务启动后也可直接看 `wincron.exe status` 输出的实际端口。
 
+### 6.（可选）配置通知渠道
+
+在 `crontab.json` 的 `app.notify_channels` 里定义渠道，再在任务的 `notify.channels` 中按名称引用；`wincron.exe notify types` 列出支持的渠道，`notify list` / `notify test <渠道名>` 用来核验。完整说明见[第十节](#十通知与日志)。
+
 ---
 
 ## 五、命令行
@@ -195,6 +199,9 @@ wincron.exe uninstall
 | `reload` | 更新配置文件时间戳，立即触发服务热加载（不改内容） |
 | `doctor` | 输出当前 Session、账户、环境变量、驱动器、风险清单 |
 | `doctor -cmd "C:\scripts\backup.bat"` | 用与服务完全相同的执行方式试跑一条命令，验证脚本能否在这种环境下工作 |
+| `notify` / `notify list` | 列出已配置通知渠道及其就绪状态、构造失败原因 |
+| `notify types` | 列出支持的渠道类型与各自必填字段 |
+| `notify test <渠道名>` | 立即向该渠道发送一条测试通知，验证 token / 机器人是否可用 |
 | `version` | 显示版本（Release 产物显示对应 tag 版本） |
 | `help` | 显示帮助 |
 
@@ -247,10 +254,10 @@ wincron.exe uninstall
 | `log_dir` | string | `logs` | 日志目录，相对路径以 exe 目录为基准 |
 | `log_retention_days` | int | `30` | 日志保留天数，过期自动清理 |
 | `enable_seconds` | bool | `true` | 兼容保留；5 / 6 字段 cron 现在自动识别，此开关不再影响解析 |
-| `smtp_host` | string | 空 | SMTP 服务器，留空则不发邮件 |
-| `smtp_port` | string | `587` | SMTP 端口 |
-| `smtp_user` | string | 空 | SMTP 账号，同时作为发件人 |
-| `smtp_pass` | string | 空 | SMTP 密码 / 授权码 |
+| `notify_channels` | array | `[]` | 全局**命名通知渠道**定义，见[第十节](#十通知与日志)；凭据可写 `${ENV:NAME}` |
+| `notify_timeout` | int | `10` | 单个渠道发送超时秒数，`0` 按默认 10 秒；渠道内 `timeout` 可单独覆盖 |
+
+> 通知渠道定义集中在 `app.notify_channels`，任务只按 `name` 引用。旧版的 `app.smtp_*`、`notify.webhooks`、`notify.emails` 已删除；首次加载旧配置时会自动迁移并备份，见第十节。
 
 ### `jobs[]` 字段
 
@@ -264,7 +271,7 @@ wincron.exe uninstall
 | `enabled` | bool | 是否启用 |
 | `timeout` | int | 超时秒数，`0` = 不限；超时会终止整棵子进程树 |
 | `max_retry` | int | 失败重试次数 |
-| `notify` | object | `{ "on_success": bool, "on_failure": bool, "webhooks": [], "emails": [] }` |
+| `notify` | object | `{ "on_success": bool, "on_failure": bool, "channels": ["渠道名"] }` |
 | `env` | object | 追加给该任务的环境变量，如 `{ "BACKUP_ROOT": "D:\\bak" }` |
 
 完整任务示例：
@@ -282,13 +289,14 @@ wincron.exe uninstall
   "notify": {
     "on_success": false,
     "on_failure": true,
-    "webhooks": ["https://example.com/hook"],
-    "emails": ["ops@example.com"]
+    "channels": ["ops-wecom", "ops-slack"]
   },
   "env": {}
 }
 ```
 
+> `channels` 里的名称必须在 `app.notify_channels` 中存在；`validate` 会报告引用了不存在的渠道或重复引用。
+>
 > JSON 里的 Windows 路径反斜杠必须写成 `\\`。配置文件采用临时文件 + `os.Rename` 原子写入，服务不会读到写了一半的文件。
 
 ---
@@ -310,7 +318,8 @@ wincron.exe uninstall
 
 - 地址：`http://localhost:<web_port>`，默认 `9090`。
 - **独立登录页** `/login`：纯页面表单，不是浏览器原生认证弹窗。会话由服务端 HMAC 签名的 HttpOnly Cookie 维护，支持退出登录（服务端吊销令牌）、登录失败限流。
-- 页面：任务列表（增删改、启停、立即执行、cron 前置校验）、执行日志、运行环境诊断、服务状态。
+- 页面：任务列表（增删改、启停、立即执行、cron 前置校验）、执行日志、运行环境诊断、**通知渠道**、服务状态。
+- **通知渠道页**：展示每个渠道的名称 / 类型 / 是否可用 / 构造失败原因，可对可用渠道点「测试发送」；任务编辑弹窗里按复选框选择要发到哪些渠道，成功 / 失败时机分别可勾选。接口只返回名称与状态，**不回传任何凭据**。
 - 右上角显示当前用户并提供「退出登录」；会话过期会自动跳回登录页。
 
 ### HTTP API
@@ -337,7 +346,9 @@ wincron.exe uninstall
 | GET | `/api/schedule/info` | 当前调度表 |
 | POST | `/api/schedule/reload` | 触发重载 |
 | GET | `/api/doctor` | 运行环境诊断 |
-| GET | `/api/validate` | 配置校验结果 |
+| GET | `/api/validate` | 配置校验结果（含渠道与引用问题） |
+| GET | `/api/notify/channels` | 渠道定义（仅 name/type/required）、就绪状态、支持类型、构造错误 |
+| POST | `/api/notify/channels/:name/test` | 向指定渠道发送一条测试通知；渠道不可用返回 `502` |
 
 脚本示例：
 
@@ -387,9 +398,117 @@ exit /b 0
 
 ## 十、通知与日志
 
-- **日志**：`logs/<任务ID>.log`，记录开始/结束时间、退出码、耗时、标准输出与错误输出；`log_retention_days` 控制自动清理。
-- **Webhook**：`notify.webhooks` 中的 URL 会收到任务结果的 JSON POST，由 `on_success` / `on_failure` 决定是否触发。
-- **邮件**：配置 `app.smtp_*` 后，`notify.emails` 中的收件人会收到结果邮件；`smtp_host` 留空则跳过邮件发送。
+### 日志
+
+`logs/<任务ID>.log` 记录开始/结束时间、退出码、耗时、标准输出与错误输出；`log_retention_days` 控制自动清理。
+
+### 通知层设计：全部基于 nikoksr/notify
+
+项目内**不再保留任何自研的 Webhook / SMTP 发送代码**。所有渠道都由 [`github.com/nikoksr/notify`](https://github.com/nikoksr/notify) 的 `service/*` 子包实现，`internal/notify` 只负责「配置 → notify service」的构造、按任务选择渠道、超时与错误日志。
+
+- **命名渠道**：渠道定义在 `app.notify_channels`，任务只写 `notify.channels: ["渠道名"]`。凭据集中一处，不散落在每个任务里。
+- **互相隔离**：发送时为每个渠道构造独立的 `notify.Notify` 实例，避免不同任务的 `receivers` 串台。
+- **触发点唯一**：任务执行结束后触发（`cron` 定时执行与 Web「立即执行」都会走）。服务启动/停止、配置变更、错过执行等系统事件**不发通知**。
+- **可观测**：发送是异步的，单渠道独立超时；失败原因写入服务日志（Session 0 下写 `service.Logger`，前台模式打印到控制台），不会静默丢通知。服务停止时会等在途通知发完再退出。
+- **消息内容**：标题为 `[WinCron] 任务成功/失败: <任务名>`，正文含 ID、状态、命令、起止时间、耗时、退出码、重试次数以及标准输出 / 错误输出；输出与错误各截断到 2000 字节，企业微信 `text.content` 截断到 2048 字节。
+
+> 依赖固定为 **notify v0.38.1**（`go 1.19` directive）。v1.x 起要求 Go 1.22+ / Go 1.25+，会把 `go.mod` 顶到高版本，导致 Server 2012 所需的 Go 1.20.14 legacy 产物无法编译。
+
+### 支持的渠道
+
+| `type` | 必填字段 | 说明 |
+|---|---|---|
+| `http` | `urls`（也接受单个 `url`） | 通用 Webhook，POST `{"subject": "...", "message": "..."}` |
+| `wecom` | `url` | **企业微信群机器人**。notify 没有专用企微 service，这里用 `service/http` 的自定义 `BuildPayload` 生成 `msgtype/text` schema；可选 `mentioned_list`、`mentioned_mobile_list` |
+| `lark` | `url` | 飞书群机器人（`NewWebhookService`） |
+| `dingding` | `token`、`secret` | 钉钉自定义机器人（加签） |
+| `slack` | `token`、`receivers` | Bot token + 频道 ID |
+| `telegram` | `token`、`chat_ids` | 构造时会联网校验 token，带 5 秒超时 |
+| `bark` | `token` | device key；可选 `servers` 指定自建服务器 |
+| `mail` | `smtp_host`、`from`、`receivers` | `service/mail`，`host:port` + 可选 `username` / `password` |
+| `msteams` | `receivers` | Teams Incoming Webhook URL 列表 |
+| `discord` | `token`、`receivers` | Bot token + 频道 ID |
+| `pushover` | `token`、`receivers` | 应用 token + 用户 key |
+
+随时可用 `wincron.exe notify types` 查看该清单与必填字段。渠道级 `timeout` 可覆盖 `app.notify_timeout`。
+
+> notify 仓库共 29 个 `service/*` 子包，这里只接入 11 个：`syslog` 在 Windows 上无法编译；FCM、Amazon SES/SNS、Mailgun、SendGrid、Twilio 等需要各自独立的云 SDK / 凭据模型；另有一些需要 OAuth 交互式授权。它们无法用本项目统一的「命名渠道 + 收件目标」字段描述，硬接会破坏配置模型与 Go 1.20 基线。另外 notify 的 `service/wechat` 是**微信公众号 API**，不是企业微信群机器人，两者不要混用。
+
+### 配置示例
+
+```json
+{
+  "app": {
+    "notify_timeout": 10,
+    "notify_channels": [
+      {
+        "name": "ops-wecom",
+        "type": "wecom",
+        "url": "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=${ENV:WINCRON_WECOM_KEY}",
+        "mentioned_mobile_list": ["@all"]
+      },
+      {
+        "name": "ops-slack",
+        "type": "slack",
+        "token": "${ENV:WINCRON_SLACK_TOKEN}",
+        "receivers": ["#ops-alerts"]
+      },
+      {
+        "name": "ops-mail",
+        "type": "mail",
+        "smtp_host": "smtp.example.com:587",
+        "from": "wincron@example.com",
+        "username": "${ENV:WINCRON_SMTP_USER}",
+        "password": "${ENV:WINCRON_SMTP_PASS}",
+        "receivers": ["ops@example.com"]
+      }
+    ]
+  },
+  "jobs": [
+    {
+      "id": "daily-backup",
+      "notify": { "on_success": false, "on_failure": true,
+                  "channels": ["ops-wecom", "ops-slack"] }
+    }
+  ]
+}
+```
+
+仓库里的 [`crontab.example.json`](crontab.example.json) 是可直接复制的完整模板。
+
+### 凭据：`${ENV:NAME}`
+
+所有字符串字段（`url` / `urls` / `token` / `secret` / `username` / `password` / `receivers` / `servers` / `smtp_host` / `from` / `mentioned_*`）都支持 `${ENV:变量名}`，避免 token 和邮箱密码明文落盘。
+
+- 变量缺失时**只有该渠道被标记为不可用**并写入构造错误，服务照常启动，其它渠道不受影响。
+- `validate` 与 `list` 不会要求变量在**当前终端**里存在：交互式终端和 Session 0 服务的环境变量往往不同，在这里报错只会产生假阳性；真正的展开与缺失报错发生在构造渠道时。
+- Windows 服务由 SCM 启动，读取的是**系统环境变量**。设置后需要重启服务（或重启系统）才生效；只设在当前用户下，`LocalSystem` 是看不到的。
+
+### 测试与排障
+
+```cmd
+wincron.exe notify types                :: 支持哪些类型、各自必填什么
+wincron.exe notify list                 :: 渠道是否可用、构造失败原因
+wincron.exe notify test ops-wecom       :: 真实发一条测试通知
+```
+
+Web「通知渠道」页同样提供状态与「测试发送」按钮；`GET /api/notify/channels` 可脚本化查询。渠道发送失败、5xx、网络不可达都会写进服务日志。
+
+### 旧配置自动迁移
+
+旧版的 `app.smtp_*`、`notify.webhooks`、`notify.emails` 已彻底删除，但升级不会让现有任务静默丢通知：
+
+1. 首次 `Load()` 检测到旧字段时，按任务生成 `legacy-<任务ID>-http` 与 `legacy-<任务ID>-mail` 两个命名渠道（`smtp_host` + `smtp_port` 合成 `host:port`，`smtp_user` 同时作为 `from` 与 `username`），任务改成按名称引用。
+2. 写回前把原文件**逐字节**备份为 `crontab.json.pre-notify.bak`；该备份已存在时不覆盖，保证最原始的那份不被热加载反复改写。
+3. 写回后旧字段消失；迁移是幂等的，二次加载不会追加重复渠道。写回失败时内存里已是新格式，下次加载会重试。
+
+### 已知边界
+
+- 没有重试、限流、去重、通知历史与自定义消息模板；失败只记日志，不补偿。
+- notify 各 service 对 `context` 的支持程度不一致：`service/http` 会真正响应取消，而 `service/mail` 只在发送前检查一次 ctx。因此 `notify_timeout` 主要兜住 HTTP 类渠道，SMTP 类还依赖服务端超时设置。
+- `service/mail` 走 STARTTLS（常见 587）；**不支持 465 隐式 TLS**。
+- `telegram.New` 会联网校验 token，本项目给它套了 5 秒初始化超时；网络不通时该渠道不可用，不影响其它渠道。
+- 通用 `http` 渠道发的是 notify 默认 schema，不能直接把企业微信 / 钉钉 / 飞书机器人地址填进去；这些平台请用对应的 `wecom` / `dingding` / `lark` 类型。
 
 ---
 
@@ -406,6 +525,10 @@ exit /b 0
 | 配置改坏了服务退出 | 启动期非法 JSON 会 fail-fast 并打印中文错误；修好后重启即可。运行期改坏不会中断服务，会保留上一份有效配置 |
 | 日志中文乱码 | 确认程序为当前版本；脚本自身编码见第九节 |
 | 任务超时后仍有残留进程 | 超时会终止整棵子进程树；若脚本又拉起了脱离作业的新进程，请检查脚本逻辑 |
+| 通知完全没收到 | ① `notify list` 看渠道是否「可用」 ② 检查 `on_success` / `on_failure` 与 `notify.channels` 是否填了 ③ `notify test <渠道名>` 单独验证 ④ 看服务日志里的「通知发送失败」 |
+| 渠道显示「环境变量未设置」 | 确认变量是**系统**环境变量、重启过服务；`LocalSystem` 看不到当前用户的用户级变量。`validate` 不报错是正常设计 |
+| 企业微信 / 飞书机器人收不到 | 必须用 `wecom` / `lark` 类型；通用 `http` 渠道发的是 `{"subject","message"}`，不符合这些平台的 schema |
+| 邮件发不出去 | `service/mail` 只支持 STARTTLS（587），不支持 465 隐式 TLS；`smtp_host` 要写 `host:port` |
 
 ---
 
@@ -416,7 +539,7 @@ git clone https://github.com/0x5c0f/wincron.git
 cd wincron
 ```
 
-`go.mod` 固定为 `go 1.20`，因此 Go 1.20.14 及以上工具链都能编译。
+`go.mod` 固定为 `go 1.20`，因此 Go 1.20.14 及以上工具链都能编译。通知依赖固定为 `github.com/nikoksr/notify v0.38.1`（更高的 v1.x 要求 Go 1.22+ / 1.25+，会破坏 legacy 产物）；如果要升级 notify，必须同步复核 Go 1.20.14 工具链能否编译。
 
 ```bash
 # 标准检验流程
@@ -498,7 +621,7 @@ git push origin v1.0.0-rc.1
 ## 十四、安全须知
 
 - **必须修改 `web_password`**：内置值 `CHANGE_ME_BEFORE_USE` 只是占位符，任何能访问 Web 端口的人都能用它登录并增删任务。
-- 配置文件里包含 Web 密码、SMTP 密码、可选的服务账户密码，请限制该文件的 ACL，不要提交到公开仓库（本仓库 `.gitignore` 已忽略运行时的 `crontab.json`）。
+- 配置文件里包含 Web 密码、通知渠道 token / 邮箱密码、可选的服务账户密码，请限制该文件的 ACL，不要提交到公开仓库（本仓库 `.gitignore` 已忽略运行时的 `crontab.json`）。通知凭据强烈建议写成 `${ENV:NAME}` 并设为系统环境变量；Web 的 `/api/notify/channels` 只返回名称与状态，不回传凭据，但配置文件本身仍是敏感文件。
 - 默认 Web 监听 `9090`，建议仅在本机/内网访问，必要时用防火墙限制来源。
 - 任务是**以服务账户权限执行任意命令**的，等同于给配置文件写入者该权限；不要给不可信来源开放配置修改能力。
 - 会话密钥由进程随机生成、不落盘；修改用户名/密码、重启进程、会话过期、主动登出都会使旧会话失效。
@@ -523,7 +646,19 @@ A：默认是 exe 同目录的 `crontab.json`；用 `-config D:\path\crontab.jso
 A：设置 `app.service_user` 与 `app.service_password` 后重新安装/重启服务。留空则是 `LocalSystem`。
 
 **Q：为什么要出两个 exe？**
-A：Go 1.21 起官方不再支持 Windows Server 2012 / 2012 R2，只有 Go 1.20 编译的 legacy 包能覆盖这些系统；现代系统则用较新工具链的产物。
+A：Go 1.21 起官方不再支持 Windows Server 2012 / 2012 R2，只有 Go 1.20 编译的 legacy 包能覆盖这些系统；现代系统则用较新工具链的产物。这也是 notify 依赖必须锁在 v0.38.1 的原因。
+
+**Q：能不能直接把企业微信 / 钉钉机器人地址填进 `http` 渠道？**
+A：不能。通用 `http` 渠道发的是 notify 默认的 `{"subject","message"}`。请分别使用 `wecom` / `dingding` / `lark` 类型，它们会生成各平台要求的 JSON schema。
+
+**Q：升级后旧的 `webhooks` / `emails` / `smtp_*` 还能用吗？**
+A：能，第一次加载会自动迁移成命名渠道并改写 `crontab.json`，原文件逐字节备份在 `crontab.json.pre-notify.bak`。迁移后建议把凭据改成 `${ENV:NAME}`，并用 `notify list` / `notify test` 复核。
+
+**Q：通知渠道的凭据会被 Web 页面看到吗？**
+A：`/api/notify/channels` 只返回 `name` / `type` / `required` 和就绪状态，不返回 `url` / `token` / `password`；但 `crontab.json` 本身仍含这些值（或环境变量名），请限制文件 ACL。
+
+**Q：服务启动、配置变更、任务超时被杀会发通知吗？**
+A：不会。当前只有「任务执行结束」一个触发点，且按 `on_success` / `on_failure` 决定；失败原因可从任务日志和服务日志查看。
 
 ---
 
@@ -537,12 +672,13 @@ internal/scheduler/   任务调度与重载
 internal/executor/    无窗口执行、输出转码、超时杀进程树、日志
 internal/service/     Windows 服务生命周期与环境快照
 internal/web/         Gin Web 服务、会话认证、内嵌 HTML 页面
-internal/notify/      Webhook / SMTP 通知
+internal/notify/      notify service 构造、渠道路由、超时与失败日志
+internal/config/notify.go  渠道模型、${ENV:NAME} 展开、旧配置迁移与校验
 internal/doctor/      运行环境诊断
 internal/paths/       路径基准（exe 所在目录）
 examples/             示例脚本
 ```
 
-依赖：[gin](https://github.com/gin-gonic/gin)、[cron/v3](https://github.com/robfig/cron)、[service](https://github.com/kardianos/service)、`golang.org/x/sys`、`golang.org/x/text`。
+依赖：[gin](https://github.com/gin-gonic/gin)、[cron/v3](https://github.com/robfig/cron)、[service](https://github.com/kardianos/service)、[notify](https://github.com/nikoksr/notify)、`golang.org/x/sys`、`golang.org/x/text`。
 
 本项目采用 [MIT License](LICENSE) · Copyright (c) 2026 0x5c0f。

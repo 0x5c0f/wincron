@@ -30,12 +30,12 @@ type JobConfig struct {
 	Env      map[string]string `json:"env"`       // 环境变量（可选）
 }
 
-// NotifyConfig 通知配置
+// NotifyConfig 任务的通知规则：何时通知、发到哪些命名渠道。
+// 渠道本身定义在 app.notify_channels，任务只按名称引用。
 type NotifyConfig struct {
-	OnSuccess bool     `json:"on_success"` // 成功时通知
-	OnFailure bool     `json:"on_failure"` // 失败时通知
-	Webhooks  []string `json:"webhooks"`   // webhook URL列表
-	Emails    []string `json:"emails"`     // 邮件收件人列表
+	OnSuccess bool     `json:"on_success"`         // 成功时通知
+	OnFailure bool     `json:"on_failure"`         // 失败时通知
+	Channels  []string `json:"channels,omitempty"` // 引用的通知渠道名称
 }
 
 // AppConfig 应用配置
@@ -52,10 +52,11 @@ type AppConfig struct {
 	LogDir           string `json:"log_dir"`            // 日志目录
 	LogRetentionDays int    `json:"log_retention_days"` // 日志保留天数
 	EnableSeconds    bool   `json:"enable_seconds"`     // 兼容保留：5/6字段现已自动识别，此开关不再影响解析
-	SMTPHost         string `json:"smtp_host"`          // SMTP服务器（留空则不发邮件）
-	SMTPPort         string `json:"smtp_port"`          // SMTP端口
-	SMTPUser         string `json:"smtp_user"`          // SMTP账号，同时作为发件人
-	SMTPPass         string `json:"smtp_pass"`          // SMTP密码/授权码
+
+	// 通知渠道统一由 nikoksr/notify 提供服务实现。
+	// 凭据字段支持 ${ENV:NAME}，避免明文写进 crontab.json。
+	NotifyChannels []NotifyChannel `json:"notify_channels,omitempty"`
+	NotifyTimeout  int             `json:"notify_timeout"` // 单渠道发送超时（秒），0 表示使用默认 10 秒
 }
 
 // CrontabFile crontab配置文件结构
@@ -108,7 +109,7 @@ func DefaultConfig() *CrontabFile {
 			LogDir:           "logs",
 			LogRetentionDays: 30,
 			EnableSeconds:    true,
-			SMTPPort:         "587",
+			NotifyTimeout:    10,
 		},
 		Jobs: []JobConfig{},
 	}
@@ -125,8 +126,7 @@ func NewConfigManager(filePath string) *ConfigManager {
 // cloneJob 深拷贝单个任务，避免 Get/GetJobs 暴露内部 slice 和 map
 func cloneJob(j JobConfig) JobConfig {
 	out := j
-	out.Notify.Webhooks = append([]string(nil), j.Notify.Webhooks...)
-	out.Notify.Emails = append([]string(nil), j.Notify.Emails...)
+	out.Notify.Channels = append([]string(nil), j.Notify.Channels...)
 	if j.Env != nil {
 		out.Env = make(map[string]string, len(j.Env))
 		for k, v := range j.Env {
@@ -142,6 +142,7 @@ func cloneConfig(c *CrontabFile) *CrontabFile {
 		return nil
 	}
 	out := *c
+	out.App.NotifyChannels = cloneChannels(c.App.NotifyChannels)
 	out.Jobs = make([]JobConfig, len(c.Jobs))
 	for i, j := range c.Jobs {
 		out.Jobs[i] = cloneJob(j)
@@ -160,6 +161,8 @@ func (cm *ConfigManager) Load() error {
 		}
 		return fmt.Errorf("读取配置文件失败: %w", err)
 	}
+	// 保留原始字节用于升级前的备份，备份必须与源文件编码完全一致。
+	originalData := append([]byte(nil), data...)
 
 	data, err = decodeConfigBytes(data)
 	if err != nil {
@@ -169,6 +172,18 @@ func (cm *ConfigManager) Load() error {
 	var cfg CrontabFile
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		return fmt.Errorf("解析配置文件失败: %w", err)
+	}
+
+	// 旧版 webhooks / emails / smtp_* 一次性转换成 notify 命名渠道。
+	// 转换成功后会自动写回新格式，旧字段从此不再出现。
+	migrated, err := MigrateLegacyNotify(&cfg, data)
+	if err != nil {
+		return fmt.Errorf("迁移旧版通知配置失败: %w", err)
+	}
+	if migrated {
+		if err := backupBeforeMigration(cm.filePath, originalData); err != nil {
+			fmt.Printf("[WinCron] 警告: 无法备份旧配置文件 %s: %v\n", cm.filePath, err)
+		}
 	}
 
 	// 合并默认值（只在字段为零值时补，不覆盖用户显式配置）
@@ -196,8 +211,12 @@ func (cm *ConfigManager) Load() error {
 	if cfg.App.LogRetentionDays == 0 {
 		cfg.App.LogRetentionDays = def.LogRetentionDays
 	}
-	if cfg.App.SMTPPort == "" {
-		cfg.App.SMTPPort = def.SMTPPort
+	if cfg.App.NotifyTimeout == 0 {
+		cfg.App.NotifyTimeout = def.NotifyTimeout
+	} else if cfg.App.NotifyTimeout < 0 {
+		issues = append(issues, fmt.Sprintf(
+			"通知超时 %d 无效，已回退到默认 %d 秒", cfg.App.NotifyTimeout, def.NotifyTimeout))
+		cfg.App.NotifyTimeout = def.NotifyTimeout
 	}
 
 	// 只填了用户名或只填了密码是危险的半配置：
@@ -220,6 +239,14 @@ func (cm *ConfigManager) Load() error {
 	cm.mu.Lock()
 	cm.config = &cfg
 	cm.loadIssues = issues
+	if migrated {
+		// 写回失败不能让服务起不来：内存里已是新格式，下次加载会再试一次。
+		if err := cm.saveLocked(); err != nil {
+			fmt.Printf("[WinCron] 警告: 通知配置已升级但未能写回 %s: %v\n", cm.filePath, err)
+		} else {
+			fmt.Printf("[WinCron] 已将旧版通知配置升级为 notify 渠道并写回 %s（原文件已备份）\n", cm.filePath)
+		}
+	}
 	if fi, err := os.Stat(cm.filePath); err == nil {
 		cm.modTime = fi.ModTime()
 		cm.size = fi.Size()
@@ -227,6 +254,18 @@ func (cm *ConfigManager) Load() error {
 	cm.mu.Unlock()
 
 	return nil
+}
+
+// backupBeforeMigration 在自动改写 crontab.json 之前留一份逐字节一致的备份。
+// 只在备份文件不存在时写入，避免热加载反复覆盖掉最原始的那份。
+func backupBeforeMigration(path string, original []byte) error {
+	bak := path + ".pre-notify.bak"
+	if _, err := os.Stat(bak); err == nil {
+		return nil
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return os.WriteFile(bak, original, 0600)
 }
 
 // Get 获取当前配置的深拷贝（线程安全，调用方可自由读写）
@@ -367,9 +406,13 @@ func validateJob(job JobConfig) error {
 // 但一旦出现就会让日志、调度、手动执行按 ID 互相覆盖。
 func (cm *ConfigManager) ValidateJobs() []string {
 	cm.mu.RLock()
-	jobs := cloneConfig(cm.config).Jobs
+	snapshot := cloneConfig(cm.config)
 	problems := append([]string(nil), cm.loadIssues...)
 	cm.mu.RUnlock()
+	jobs := snapshot.Jobs
+
+	problems = append(problems, ValidateChannels(snapshot.App.NotifyChannels)...)
+	problems = append(problems, ValidateJobChannels(jobs, snapshot.App.NotifyChannels)...)
 
 	seen := make(map[string]int, len(jobs))
 	for i, j := range jobs {

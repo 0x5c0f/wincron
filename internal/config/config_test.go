@@ -26,7 +26,7 @@ func validJob(id string) JobConfig {
 		Cron:     "* * * * *",
 		Command:  `echo aaa >> c:\b.txt`,
 		Enabled:  true,
-		Notify:   NotifyConfig{Webhooks: []string{}, Emails: []string{}},
+		Notify:   NotifyConfig{Channels: []string{}},
 		Env:      map[string]string{},
 		WorkDir:  "",
 		Timeout:  0,
@@ -128,7 +128,7 @@ func TestAddJobRejectsEmptyCommandAndDuplicateID(t *testing.T) {
 func TestGetReturnsDeepCopy(t *testing.T) {
 	cm, _ := newTestManager(t)
 	job := validJob("job-1")
-	job.Notify.Webhooks = []string{"http://example.com"}
+	job.Notify.Channels = []string{"ops"}
 	if err := cm.AddJob(job); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestGetReturnsDeepCopy(t *testing.T) {
 	cfg := cm.Get()
 	cfg.Jobs[0].Cron = "MUTATED"
 	cfg.Jobs[0].Env["X"] = "Y"
-	cfg.Jobs[0].Notify.Webhooks[0] = "MUTATED"
+	cfg.Jobs[0].Notify.Channels[0] = "MUTATED"
 	cfg.App.WebPort = 1
 
 	again := cm.Get()
@@ -146,8 +146,8 @@ func TestGetReturnsDeepCopy(t *testing.T) {
 	if _, ok := again.Jobs[0].Env["X"]; ok {
 		t.Error("Get() 暴露了内部 Env map")
 	}
-	if again.Jobs[0].Notify.Webhooks[0] == "MUTATED" {
-		t.Error("Get() 暴露了内部 Webhooks slice")
+	if again.Jobs[0].Notify.Channels[0] == "MUTATED" {
+		t.Error("Get() 暴露了内部 Channels slice")
 	}
 	if again.App.WebPort == 1 {
 		t.Error("Get() 暴露了内部 App 配置")

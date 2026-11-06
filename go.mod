@@ -7,9 +7,30 @@ go 1.20
 require (
 	github.com/gin-gonic/gin v1.9.1
 	github.com/kardianos/service v1.2.2
+	github.com/nikoksr/notify v0.38.1
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/sys v0.8.0
 	golang.org/x/text v0.9.0
+)
+
+require (
+	github.com/atc0005/go-teams-notify/v2 v2.6.1 // indirect
+	github.com/blinkbean/dingtalk v0.0.0-20210905093040-7d935c0f7e19 // indirect
+	github.com/bwmarrin/discordgo v0.27.1 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/go-lark/lark v1.7.4 // indirect
+	github.com/go-telegram-bot-api/telegram-bot-api v4.6.4+incompatible // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
+	github.com/gregdel/pushover v1.1.0 // indirect
+	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible // indirect
+	github.com/kr/pretty v0.3.1 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/slack-go/slack v0.12.1 // indirect
+	github.com/stretchr/objx v0.5.0 // indirect
+	github.com/stretchr/testify v1.8.3 // indirect
+	github.com/technoweenie/multipartstreamer v1.0.1 // indirect
+	golang.org/x/sync v0.1.0 // indirect
 )
 
 require (

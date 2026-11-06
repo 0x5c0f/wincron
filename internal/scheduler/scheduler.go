@@ -78,7 +78,12 @@ func (s *Scheduler) Start() error {
 
 	// 热加载由 ConfigManager 的回调驱动：watchConfig 只负责检测文件变化，
 	// 真正重建调度表统一走 Reload，避免出现两条互相冲突的重载路径。
-	s.config.SetOnReload(func(_ *config.CrontabFile) {
+	s.config.SetOnReload(func(cfg *config.CrontabFile) {
+		// 通知渠道与调度表必须在同一次热加载里一起更新，
+		// 否则改了 webhook 地址后任务还会往旧地址发。
+		if s.notifier != nil && cfg != nil {
+			s.notifier.Reload(cfg.App.NotifyChannels, cfg.App.NotifyTimeout)
+		}
 		if err := s.Reload(); err != nil {
 			fmt.Printf("[WinCron] 配置热加载失败: %v\n", err)
 		}

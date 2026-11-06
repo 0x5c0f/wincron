@@ -10,6 +10,7 @@ import (
 	"wincron/internal/cronexpr"
 	"wincron/internal/doctor"
 	"wincron/internal/executor"
+	"wincron/internal/notify"
 	"wincron/internal/paths"
 	"wincron/internal/scheduler"
 
@@ -21,6 +22,7 @@ type Server struct {
 	configManager *config.ConfigManager
 	scheduler     *scheduler.Scheduler
 	executor      *executor.Executor
+	notifier      *notify.Notifier
 	port          int
 	server        *http.Server
 
@@ -30,11 +32,12 @@ type Server struct {
 }
 
 // NewServer 创建Web服务器
-func NewServer(cm *config.ConfigManager, sched *scheduler.Scheduler, exec *executor.Executor, port int) *Server {
+func NewServer(cm *config.ConfigManager, sched *scheduler.Scheduler, exec *executor.Executor, notifier *notify.Notifier, port int) *Server {
 	return &Server{
 		configManager: cm,
 		scheduler:     sched,
 		executor:      exec,
+		notifier:      notifier,
 		port:          port,
 		sessionKey:    newSessionKey(),
 		limiter:       newLoginLimiter(),
@@ -86,6 +89,9 @@ func (s *Server) newRouter() *gin.Engine {
 
 		api.GET("/doctor", s.handleDoctor)
 		api.GET("/validate", s.handleValidate)
+
+		api.GET("/notify/channels", s.handleNotifyChannels)
+		api.POST("/notify/channels/:name/test", s.handleTestNotifyChannel)
 	}
 	return r
 }

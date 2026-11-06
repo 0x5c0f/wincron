@@ -44,8 +44,9 @@ func newTestServer(t *testing.T, username, password string) (*Server, *config.Co
 		t.Fatal(err)
 	}
 	exec := executor.NewExecutor(cfg.App.LogDir)
-	sched := scheduler.NewScheduler(cm, exec, notify.NewNotifier())
-	srv := NewServer(cm, sched, exec, 0)
+	notifier := notify.NewNotifier(nil, 0, nil)
+	sched := scheduler.NewScheduler(cm, exec, notifier)
+	srv := NewServer(cm, sched, exec, notifier, 0)
 
 	return srv, cm, func() { exec.Close() }
 }
