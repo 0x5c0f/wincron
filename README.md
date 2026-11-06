@@ -1,6 +1,6 @@
 # WinCron
 
-[![Release](https://img.shields.io/github/v/release/0x5c0f/wincron?display_name=tag)](https://github.com/0x5c0f/wincron/releases)
+[![Release](https://img.shields.io/github/v/release/0x5c0f/wincron?include_prereleases&display_name=tag)](https://github.com/0x5c0f/wincron/releases)
 [![Build](https://github.com/0x5c0f/wincron/actions/workflows/release.yml/badge.svg)](https://github.com/0x5c0f/wincron/actions/workflows/release.yml)
 [![Go](https://img.shields.io/badge/Go-1.20%2B-00ADD8)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -462,6 +462,8 @@ wincron.exe version   # WinCron v1.0.0
 | `v1.0.0-pre`、`v1.0.0-beta`、`v1.0` 等其它 `v*` 标签 | ❌ | 静默跳过，工作流不报错 | — |
 
 只有严格匹配 `^v[0-9]+\.[0-9]+\.[0-9]+$` 或 `^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$` 的标签才会构建发布。Release 的 `tag_name` 就是触发它的原始标签，因此 `v1.0.0-rc.1` 与 `v1.0.0` 可以共存、互不覆盖。
+
+> 文档顶部的 Release badge 带 `include_prereleases` 参数：shields.io 默认只统计正式 Release，仓库尚处于预发布阶段时会显示「no releases」；加上该参数后会显示最新版本（含预发布）。
 
 ### 构建矩阵
 
