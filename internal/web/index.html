@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WinCron - 定时任务管理</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #333; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { font-size: 22px; font-weight: 600; }
+        .header .status { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+        .header-right { display: flex; align-items: center; gap: 22px; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 6px #4caf50; }
+        .status-dot.stopped { background: #f44336; box-shadow: 0 0 6px #f44336; }
+        .user-box { display: flex; align-items: center; gap: 10px; }
+        .user-name { font-size: 13px; color: rgba(255,255,255,0.92); }
+        .btn-logout { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.4); }
+        .btn-logout:hover { background: rgba(255,255,255,0.32); }
+        .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .stat-card .label { font-size: 13px; color: #888; margin-bottom: 6px; }
+        .stat-card .value { font-size: 28px; font-weight: 700; color: #333; }
+        .stat-card .value.green { color: #4caf50; }
+        .stat-card .value.blue { color: #2196f3; }
+        .stat-card .value.orange { color: #ff9800; }
+        .panel { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 24px; }
+        .panel-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .panel-header h2 { font-size: 16px; font-weight: 600; }
+        .panel-body { padding: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th { text-align: left; padding: 12px 16px; font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #eee; }
+        td { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f5f5f5; }
+        tr:hover td { background: #fafafa; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .badge-success { background: #e8f5e9; color: #2e7d32; }
+        .badge-warning { background: #fff3e0; color: #e65100; }
+        .badge-danger { background: #ffebee; color: #c62828; }
+        .badge-info { background: #e3f2fd; color: #1565c0; }
+        .btn { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-primary:hover { background: #5568d3; }
+        .btn-sm { padding: 4px 10px; font-size: 12px; }
+        .btn-danger { background: #f44336; color: white; }
+        .btn-danger:hover { background: #d32f2f; }
+        .btn-success { background: #4caf50; color: white; }
+        .btn-success:hover { background: #388e3c; }
+        .btn-default { background: #eee; color: #333; }
+        .btn-default:hover { background: #ddd; }
+        .actions { display: flex; gap: 6px; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay.active { display: flex; }
+        .modal { background: white; border-radius: 8px; padding: 24px; width: 520px; max-height: 80vh; overflow-y: auto; }
+        .modal h2 { margin-bottom: 20px; font-size: 18px; }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #666; font-weight: 500; }
+        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #667eea; }
+        .form-group .hint { font-size: 11px; color: #aaa; margin-top: 4px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; }
+        .tab { padding: 8px 20px; border: none; background: none; cursor: pointer; font-size: 14px; color: #888; border-bottom: 2px solid transparent; }
+        .tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 600; }
+        .log-entry { padding: 12px 16px; border-bottom: 1px solid #f5f5f5; font-family: monospace; font-size: 13px; }
+        .log-entry .log-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
+        .log-entry .log-time { color: #888; }
+        .log-entry .log-status { font-weight: 600; }
+        .log-entry .log-output { white-space: pre-wrap; word-break: break-all; color: #555; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 4px; margin-top: 4px; }
+        .empty { text-align: center; padding: 40px; color: #aaa; }
+        .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+        .toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 20px; transition: 0.3s; }
+        .toggle-slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.3s; }
+        .toggle input:checked + .toggle-slider { background: #4caf50; }
+        .toggle input:checked + .toggle-slider:before { transform: translateX(16px); }
+        .toast { position: fixed; top: 20px; right: 20px; z-index: 2000; min-width: 240px; max-width: 440px; padding: 12px 16px; border-radius: 6px; color: white; font-size: 13px; line-height: 1.6; box-shadow: 0 4px 16px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-10px); transition: all 0.25s; pointer-events: none; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast-success { background: #43a047; }
+        .toast-error { background: #e53935; }
+    </style>
+</head>
+<body>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <div class="header">
+        <h1>WinCron 定时任务管理</h1>
+        <div class="header-right">
+            <div class="status">
+                <span id="statusDot" class="status-dot"></span>
+                <span id="statusText">服务运行中</span>
+            </div>
+            <div id="userBox" class="user-box" style="display:none;">
+                <span id="currentUser" class="user-name"></span>
+                <button id="logoutBtn" class="btn btn-sm btn-logout" onclick="logout()">退出登录</button>
+            </div>
+            <span id="noAuthBox" class="user-name" style="display:none;">免认证模式</span>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="stats">
+            <div class="stat-card">
+                <div class="label">任务总数</div>
+                <div class="value blue" id="totalJobs">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">已启用</div>
+                <div class="value green" id="enabledJobs">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">调度中</div>
+                <div class="value orange" id="runningJobs">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="label">最后执行</div>
+                <div class="value" id="lastRun" style="font-size:14px;">-</div>
+            </div>
+        </div>
+
+        <div class="tab-bar">
+            <button id="tabJobs" class="tab active" onclick="switchTab('jobs', this)">任务列表</button>
+            <button id="tabLogs" class="tab" onclick="switchTab('logs', this)">执行日志</button>
+            <button id="tabDoctor" class="tab" onclick="switchTab('doctor', this)">运行环境</button>
+        </div>
+
+        <div id="jobsPanel" class="panel">
+            <div class="panel-header">
+                <h2>定时任务</h2>
+                <button id="addJobBtn" class="btn btn-primary" onclick="showAddModal()">+ 添加任务</button>
+            </div>
+            <div class="panel-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>启用</th>
+                            <th>任务名称</th>
+                            <th>Cron表达式</th>
+                            <th>命令</th>
+                            <th>下次执行</th>
+                            <th>上次执行</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="jobsTableBody">
+                        <tr><td colspan="7" class="empty">加载中...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="logsPanel" class="panel" style="display:none;">
+            <div class="panel-header">
+                <h2>执行日志</h2>
+                <div>
+                    <select id="jobFilter" onchange="loadLogs()" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
+                        <option value="">全部任务</option>
+                    </select>
+                    <button class="btn btn-default btn-sm" onclick="loadLogs()">刷新</button>
+                </div>
+            </div>
+            <div class="panel-body" id="logsBody">
+                <div class="empty">加载中...</div>
+            </div>
+        </div>
+
+        <div id="doctorPanel" class="panel" style="display:none;">
+            <div class="panel-header">
+                <h2>服务进程运行环境 <span style="font-size:12px;color:#888;font-weight:400;">排查「双击能跑、定时跑不了」</span></h2>
+                <button class="btn btn-default btn-sm" onclick="loadDoctor()">刷新</button>
+            </div>
+            <div class="panel-body" style="padding:16px 20px;" id="doctorBody">
+                <div class="empty">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="jobModal">
+        <div class="modal">
+            <h2 id="modalTitle">添加任务</h2>
+            <input type="hidden" id="jobId">
+            <div class="form-group">
+                <label>任务名称</label>
+                <input type="text" id="jobName" placeholder="例如：数据库备份">
+            </div>
+            <div class="form-group">
+                <label>Cron表达式</label>
+                <input type="text" id="jobCron" placeholder="例如：*/5 * * * *">
+                <div class="hint">支持5字段（分 时 日 月 周）或6字段（秒 分 时 日 月 周）。例：0 2 * * * = 每天凌晨2点</div>
+            </div>
+            <div class="form-group">
+                <label>执行命令</label>
+                <textarea id="jobCommand" rows="3" placeholder="例如：C:\scripts\backup.bat"></textarea>
+                <div class="hint">Windows下通过 cmd /c 执行，支持bat脚本、exe程序、PowerShell等</div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>工作目录（可选）</label>
+                    <input type="text" id="jobWorkDir" placeholder="例如：C:\scripts">
+                </div>
+                <div class="form-group">
+                    <label>超时时间（秒，0=不超时）</label>
+                    <input type="number" id="jobTimeout" value="0">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>最大重试次数</label>
+                    <input type="number" id="jobMaxRetry" value="0">
+                </div>
+                <div class="form-group">
+                    <label>是否启用</label>
+                    <select id="jobEnabled">
+                        <option value="true">启用</option>
+                        <option value="false">禁用</option>
+                    </select>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>失败时通知Webhook（多个用逗号分隔）</label>
+                <input type="text" id="jobWebhooks" placeholder="例如：https://example.com/hook">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeModal()">取消</button>
+                <button id="saveJobBtn" class="btn btn-primary" onclick="saveJob()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const apiBase = '/api';
+
+        function showToast(msg, type) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = 'toast show ' + (type === 'success' ? 'toast-success' : 'toast-error');
+            clearTimeout(el._timer);
+            el._timer = setTimeout(() => { el.className = 'toast'; }, 4000);
+        }
+
+        // 会话完全由服务端 HttpOnly Cookie 维护，前端不保存任何账号密码。
+        // 旧实现依赖浏览器对话框并手工拼接认证头，遇到中文密码会抛异常，
+        // 且浏览器缓存与前端变量状态不同步，这里统一改为单一会话来源。
+        async function api(path, options = {}) {
+            let resp;
+            try {
+                resp = await fetch(apiBase + path, {
+                    ...options,
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+                });
+            } catch (e) {
+                showToast('无法连接服务: ' + (e && e.message ? e.message : '网络错误'));
+                throw e;
+            }
+
+            // 会话过期统一回独立登录页，不再递归重试、不再弹原生对话框
+            if (resp.status === 401) {
+                window.location.replace('/login');
+                throw new Error('未登录或会话已过期');
+            }
+
+            let data = {};
+            try { data = await resp.json(); } catch (e) {}
+            if (!resp.ok) {
+                const msg = (data && data.error) ? data.error : ('请求失败 (HTTP ' + resp.status + ')');
+                showToast(msg);
+                throw new Error(msg);
+            }
+            return data;
+        }
+
+        async function loadAuthStatus() {
+            try {
+                const resp = await fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.auth_enabled) {
+                    if (!data.authenticated) {
+                        window.location.replace('/login');
+                        return;
+                    }
+                    document.getElementById('currentUser').textContent = data.username || '';
+                    document.getElementById('userBox').style.display = 'flex';
+                    document.getElementById('noAuthBox').style.display = 'none';
+                } else {
+                    document.getElementById('noAuthBox').style.display = 'inline';
+                    document.getElementById('userBox').style.display = 'none';
+                }
+            } catch (e) {
+                // 状态接口异常不阻塞页面，后续 api() 会给出明确提示
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' });
+            } catch (e) {}
+            window.location.replace('/login');
+        }
+
+        async function loadStatus() {
+            const data = await api('/status');
+            document.getElementById('totalJobs').textContent = data.total_jobs;
+            document.getElementById('enabledJobs').textContent = data.enabled_jobs;
+            document.getElementById('runningJobs').textContent = data.running_jobs;
+            document.getElementById('lastRun').textContent = data.last_run_time;
+            const dot = document.getElementById('statusDot');
+            const text = document.getElementById('statusText');
+            if (data.status && data.status.running) {
+                dot.classList.remove('stopped');
+                text.textContent = '服务运行中';
+            } else {
+                dot.classList.add('stopped');
+                text.textContent = '服务未运行';
+            }
+        }
+
+        async function loadJobs() {
+            const data = await api('/jobs');
+            const tbody = document.getElementById('jobsTableBody');
+            const filter = document.getElementById('jobFilter');
+            filter.innerHTML = '<option value="">全部任务</option>';
+
+            if (!data.jobs || data.jobs.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无任务，点击"添加任务"创建</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = data.jobs.map(j => `
+                <tr>
+                    <td>
+                        <label class="toggle">
+                            <input type="checkbox" ${j.enabled ? 'checked' : ''} onchange="toggleJob('${j.id}')">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </td>
+                    <td>${escapeHtml(j.name)}</td>
+                    <td><code>${escapeHtml(j.cron)}</code></td>
+                    <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(j.command)}">${escapeHtml(j.command)}</td>
+                    <td>${j.next_run || '-'}</td>
+                    <td>${j.prev_run || '-'}</td>
+                    <td>
+                        <div class="actions">
+                            <button class="btn btn-success btn-sm" onclick="runJob('${j.id}')">执行</button>
+                            <button class="btn btn-default btn-sm" onclick="editJob('${j.id}')">编辑</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteJob('${j.id}')">删除</button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            data.jobs.forEach(j => {
+                filter.innerHTML += `<option value="${j.id}">${escapeHtml(j.name)}</option>`;
+            });
+        }
+
+        async function loadLogs() {
+            const filter = document.getElementById('jobFilter');
+            const jobFilter = filter ? filter.value : '';
+            const url = jobFilter ? `/logs/${jobFilter}?limit=50` : '/logs?limit=50';
+            const data = await api(url);
+            const body = document.getElementById('logsBody');
+
+            if (!data.logs || data.logs.length === 0) {
+                body.innerHTML = '<div class="empty">暂无执行日志</div>';
+                return;
+            }
+
+            body.innerHTML = data.logs.map(l => `
+                <div class="log-entry">
+                    <div class="log-header">
+                        <span class="log-status">
+                            <span class="badge ${l.success ? 'badge-success' : 'badge-danger'}">${l.success ? '成功' : '失败'}</span>
+                            ${escapeHtml(l.job_name)} (退出码: ${l.exit_code}, 耗时: ${Number(l.duration || 0).toFixed(2)}s)
+                        </span>
+                        <span class="log-time">${l.time}</span>
+                    </div>
+                    ${l.output ? `<div class="log-output">${escapeHtml(l.output)}</div>` : ''}
+                    ${l.error ? `<div class="log-output" style="color:#c62828;">${escapeHtml(l.error)}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        async function loadDoctor() {
+            const data = await api('/doctor');
+            const e = data.environment;
+            const body = document.getElementById('doctorBody');
+            const s0 = e.session_id === 0;
+            let html = `
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+                    <div class="stat-card" style="box-shadow:none;border:1px solid #eee;">
+                        <div class="label">Session ID</div>
+                        <div class="value ${s0 ? 'green' : 'orange'}" style="font-size:22px;">${e.session_id}</div>
+                        <div class="hint" style="font-size:11px;color:#888;margin-top:4px;">${s0 ? '后台服务会话 · 无需登录' : '交互式会话 · 调试环境'}</div>
+                    </div>
+                    <div class="stat-card" style="box-shadow:none;border:1px solid #eee;">
+                        <div class="label">运行账户</div>
+                        <div class="value" style="font-size:14px;word-break:break-all;">${escapeHtml(e.user_name)}</div>
+                    </div>
+                    <div class="stat-card" style="box-shadow:none;border:1px solid #eee;">
+                        <div class="label">主机 / 系统</div>
+                        <div class="value" style="font-size:14px;">${escapeHtml(e.hostname)}</div>
+                        <div class="hint" style="font-size:11px;color:#888;margin-top:4px;">${e.os} / ${e.arch}</div>
+                    </div>
+                </div>
+                <h3 style="font-size:14px;margin:16px 0 8px;">关键环境变量</h3>
+                <div style="background:#f9f9f9;border-radius:6px;padding:12px;font-family:monospace;font-size:12px;line-height:1.8;max-height:220px;overflow:auto;">`;
+            Object.keys(e.key_envs || {}).sort().forEach(k => {
+                html += `<div><span style="color:#888;display:inline-block;width:130px;">${escapeHtml(k)}</span>${escapeHtml(String(e.key_envs[k]).substring(0,200))}</div>`;
+            });
+            html += `</div>
+                <h3 style="font-size:14px;margin:16px 0 8px;">风险提示</h3>
+                <div style="background:#fff8e1;border-left:3px solid #ff9800;padding:12px 16px;border-radius:4px;font-size:13px;line-height:1.9;">`;
+            (e.warnings || []).forEach((w, i) => { html += `<div>${i+1}. ${escapeHtml(w)}</div>`; });
+            html += `</div>
+                <h3 style="font-size:14px;margin:16px 0 8px;">编写脚本的建议</h3>
+                <div style="background:#e8f5e9;border-left:3px solid #4caf50;padding:12px 16px;border-radius:4px;font-size:13px;line-height:1.9;">`;
+            (e.suggestions || []).forEach((s, i) => { html += `<div>${i+1}. ${escapeHtml(s)}</div>`; });
+            html += `</div>
+                <div style="margin-top:16px;font-size:12px;color:#888;">
+                    工作目录: ${escapeHtml(e.working_dir)}<br>
+                    可执行程序: ${escapeHtml(e.exe_path)}<br>
+                    采集时间: ${escapeHtml(e.collect_time)}
+                </div>`;
+            body.innerHTML = html;
+        }
+
+        function switchTab(tab, btn) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            document.getElementById('jobsPanel').style.display = tab === 'jobs' ? 'block' : 'none';
+            document.getElementById('logsPanel').style.display = tab === 'logs' ? 'block' : 'none';
+            document.getElementById('doctorPanel').style.display = tab === 'doctor' ? 'block' : 'none';
+            if (tab === 'logs') loadLogs();
+            if (tab === 'doctor') loadDoctor();
+        }
+
+        function showAddModal() {
+            document.getElementById('modalTitle').textContent = '添加任务';
+            document.getElementById('jobId').value = '';
+            document.getElementById('jobName').value = '';
+            document.getElementById('jobCron').value = '';
+            document.getElementById('jobCommand').value = '';
+            document.getElementById('jobWorkDir').value = '';
+            document.getElementById('jobTimeout').value = '0';
+            document.getElementById('jobMaxRetry').value = '0';
+            document.getElementById('jobEnabled').value = 'true';
+            document.getElementById('jobWebhooks').value = '';
+            document.getElementById('jobModal').classList.add('active');
+        }
+
+        async function editJob(id) {
+            const data = await api('/jobs/' + id);
+            const j = data.job;
+            document.getElementById('modalTitle').textContent = '编辑任务';
+            document.getElementById('jobId').value = j.id;
+            document.getElementById('jobName').value = j.name;
+            document.getElementById('jobCron').value = j.cron;
+            document.getElementById('jobCommand').value = j.command;
+            document.getElementById('jobWorkDir').value = j.work_dir || '';
+            document.getElementById('jobTimeout').value = j.timeout || 0;
+            document.getElementById('jobMaxRetry').value = j.max_retry || 0;
+            document.getElementById('jobEnabled').value = String(j.enabled);
+            document.getElementById('jobWebhooks').value = ((j.notify && j.notify.webhooks) || []).join(',');
+            document.getElementById('jobModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('jobModal').classList.remove('active');
+        }
+
+        async function saveJob() {
+            const id = document.getElementById('jobId').value;
+            const webhooks = document.getElementById('jobWebhooks').value.split(',').map(s => s.trim()).filter(s => s);
+            const job = {
+                name: document.getElementById('jobName').value,
+                cron: document.getElementById('jobCron').value,
+                command: document.getElementById('jobCommand').value,
+                work_dir: document.getElementById('jobWorkDir').value,
+                timeout: parseInt(document.getElementById('jobTimeout').value) || 0,
+                max_retry: parseInt(document.getElementById('jobMaxRetry').value) || 0,
+                enabled: document.getElementById('jobEnabled').value === 'true',
+                notify: {
+                    on_failure: webhooks.length > 0,
+                    on_success: false,
+                    webhooks: webhooks,
+                    emails: []
+                },
+                env: {}
+            };
+
+            if (!job.name || !job.cron || !job.command) {
+                showToast('请填写任务名称、Cron表达式和执行命令');
+                return;
+            }
+
+            const btn = document.getElementById('saveJobBtn');
+            btn.disabled = true;
+            try {
+                if (id) {
+                    await api('/jobs/' + id, { method: 'PUT', body: JSON.stringify(job) });
+                } else {
+                    await api('/jobs', { method: 'POST', body: JSON.stringify(job) });
+                }
+                // 服务端校验通过后才关闭弹窗；失败时保留输入，由 api() 显示具体错误
+                closeModal();
+                showToast('任务已保存', 'success');
+                loadJobs();
+                loadStatus();
+            } catch (e) {
+                // 错误已在 api() 里统一提示
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteJob(id) {
+            if (!confirm('确定删除此任务？')) return;
+            try {
+                await api('/jobs/' + id, { method: 'DELETE' });
+                showToast('任务已删除', 'success');
+                loadJobs();
+                loadStatus();
+            } catch (e) {}
+        }
+
+        async function runJob(id) {
+            try {
+                await api('/jobs/' + id + '/run', { method: 'POST' });
+                showToast('任务已触发执行', 'success');
+                setTimeout(() => loadLogs(), 2000);
+            } catch (e) {}
+        }
+
+        async function toggleJob(id) {
+            try {
+                await api('/jobs/' + id + '/toggle', { method: 'POST' });
+                loadJobs();
+                loadStatus();
+            } catch (e) {}
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        // 初始加载
+        loadAuthStatus();
+        loadStatus();
+        loadJobs();
+
+        // 定时刷新
+        setInterval(loadStatus, 10000);
+    </script>
+</body>
+</html>

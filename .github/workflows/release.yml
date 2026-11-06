@@ -1,0 +1,178 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  # 只有 vX.Y.Z 与 vX.Y.Z-rc.N 两类标签会打包发布；
+  # 其余 v* 标签静默跳过，避免误推标签造成红色构建。
+  validate:
+    name: 校验标签
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.tag.outputs.valid }}
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - name: 解析标签
+        id: tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$ ]]; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "标签 $TAG -> 预发布 Release"
+          elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "标签 $TAG -> 正式 Release"
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::标签 $TAG 不符合 vX.Y.Z / vX.Y.Z-rc.N，跳过打包"
+          fi
+
+  build:
+    name: 构建 (${{ matrix.name }})
+    needs: validate
+    if: needs.validate.outputs.valid == 'true'
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: legacy / Go 1.20.14
+            flavor: legacy
+            go: '1.20.14'
+            suffix: '-legacy'
+          - name: modern / Go 1.22.x
+            flavor: modern
+            go: '1.22.x'
+            suffix: ''
+    env:
+      TAG: ${{ needs.validate.outputs.tag }}
+      VERSION: ${{ needs.validate.outputs.version }}
+      SUFFIX: ${{ matrix.suffix }}
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Go ${{ matrix.go }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: 工具链信息
+        run: go version
+
+      # 标准 Go 检验流程：依赖、格式、静态检查、单元测试、构建。
+      # 两套工具链各跑一遍，因为发布的就是两套管链编译出的产物。
+      - name: 依赖校验
+        run: |
+          go mod download
+          go mod verify
+
+      - name: 代码格式检查 (gofmt)
+        shell: bash
+        run: |
+          bad="$(gofmt -l .)"
+          if [ -n "$bad" ]; then
+            echo "以下文件未通过 gofmt:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: 静态检查 (go vet)
+        run: go vet ./...
+
+      - name: 单元测试
+        run: go test ./... -count=1
+
+      - name: 编译
+        shell: bash
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: amd64
+        run: |
+          set -euo pipefail
+          OUT="wincron-${TAG}-windows-amd64${SUFFIX}.exe"
+          go build -trimpath \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o "$OUT" ./cmd/wincron
+          echo "OUT=$OUT" >> "$GITHUB_ENV"
+          echo "构建工具链:"
+          go version -m "$OUT" | head -3
+          ls -lh "$OUT"
+
+      - name: 冒烟测试
+        shell: bash
+        run: |
+          set -euo pipefail
+          "./$OUT" version
+
+      - name: 生成 SHA256
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum "wincron-${TAG}-windows-amd64${SUFFIX}.exe" > "SHA256SUMS-${{ matrix.flavor }}.txt"
+          cat "SHA256SUMS-${{ matrix.flavor }}.txt"
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: wincron-${{ matrix.flavor }}
+          if-no-files-found: error
+          path: |
+            wincron-*.exe
+            SHA256SUMS-*.txt
+
+  release:
+    name: 发布 Release
+    needs: [validate, build]
+    if: needs.validate.outputs.valid == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: 合并校验和并校验产物完整性
+        shell: bash
+        run: |
+          set -euo pipefail
+          count="$(ls -1 dist/*.exe | wc -l)"
+          if [ "$count" -ne 2 ]; then
+            echo "期望 2 个二进制产物，实际 $count 个"
+            exit 1
+          fi
+          cat dist/SHA256SUMS-*.txt | sort > dist/SHA256SUMS
+          rm -f dist/SHA256SUMS-*.txt
+          (cd dist && sha256sum -c SHA256SUMS)
+          echo "--- 发布文件 ---"
+          ls -lh dist
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: WinCron ${{ needs.validate.outputs.tag }}
+          prerelease: ${{ needs.validate.outputs.prerelease == 'true' }}
+          generate_release_notes: true
+          files: |
+            dist/*.exe
+            dist/SHA256SUMS

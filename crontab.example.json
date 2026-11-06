@@ -1,0 +1,21 @@
+{
+  "app": {
+    "service_name": "WinCron",
+    "display_name": "WinCron 定时任务服务",
+    "description": "Windows Cron 定时任务管理服务，替代系统计划任务",
+    "service_user": "",
+    "service_password": "",
+    "web_enabled": true,
+    "web_port": 9090,
+    "web_username": "admin",
+    "web_password": "CHANGE_ME_BEFORE_USE",
+    "log_dir": "logs",
+    "log_retention_days": 30,
+    "enable_seconds": true,
+    "smtp_host": "",
+    "smtp_port": "587",
+    "smtp_user": "",
+    "smtp_pass": ""
+  },
+  "jobs": []
+}

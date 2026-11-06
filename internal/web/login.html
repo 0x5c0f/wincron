@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - WinCron 定时任务管理</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Microsoft YaHei", sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #333;
+        }
+        .login-wrap { width: 400px; max-width: calc(100vw - 32px); }
+        .brand { text-align: center; color: white; margin-bottom: 24px; }
+        .brand h1 { font-size: 26px; font-weight: 600; letter-spacing: 1px; }
+        .brand p { font-size: 13px; opacity: 0.85; margin-top: 8px; }
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.18);
+            padding: 32px;
+        }
+        .card h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+        .card .subtitle { font-size: 13px; color: #888; margin-bottom: 24px; }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; font-size: 13px; color: #555; font-weight: 500; margin-bottom: 8px; }
+        .form-group input {
+            width: 100%;
+            padding: 11px 13px;
+            border: 1px solid #dcdfe6;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102,126,234,0.15);
+        }
+        .form-group input:disabled { background: #f5f5f5; }
+        .error-msg {
+            display: none;
+            background: #ffebee;
+            color: #c62828;
+            border-left: 3px solid #f44336;
+            border-radius: 4px;
+            padding: 10px 12px;
+            font-size: 13px;
+            line-height: 1.6;
+            margin-bottom: 18px;
+        }
+        .error-msg.show { display: block; }
+        .submit-btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .submit-btn:hover { opacity: 0.9; }
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .footer-note { text-align: center; font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 20px; line-height: 1.8; }
+        .footer-note code { background: rgba(0,0,0,0.15); padding: 1px 5px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="brand">
+            <h1>WinCron</h1>
+            <p>Windows 定时任务管理服务</p>
+        </div>
+
+        <div class="card">
+            <h2>登录管理控制台</h2>
+            <p class="subtitle">请输入配置文件中设置的账号和密码</p>
+
+            <div id="errorMsg" class="error-msg" role="alert" aria-live="polite"></div>
+
+            <form id="loginForm" autocomplete="on">
+                <div class="form-group">
+                    <label for="username">用户名</label>
+                    <input type="text" id="username" name="username" autocomplete="username"
+                           placeholder="请输入用户名" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="password">密码</label>
+                    <input type="password" id="password" name="password" autocomplete="current-password"
+                           placeholder="请输入密码" required>
+                </div>
+                <button type="submit" id="loginBtn" class="submit-btn">登 录</button>
+            </form>
+        </div>
+
+        <div class="footer-note">
+            账号来自 <code>crontab.json</code> 的 <code>web_username</code> / <code>web_password</code><br>
+            会话有效期 24 小时 · 修改密码后旧会话立即失效
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('loginForm');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorMsg = document.getElementById('errorMsg');
+
+        function showError(msg) {
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('show');
+        }
+
+        function clearError() {
+            errorMsg.textContent = '';
+            errorMsg.classList.remove('show');
+        }
+
+        function goIndex() {
+            // replace 而不是 href，避免登录页留在历史记录里被「后退」重新打开
+            window.location.replace('/');
+        }
+
+        // 只填了用户名或只填了密码时，服务端会 fail-closed 拒绝所有登录。
+        // 登录页把配置错误直接显示出来，避免用户以为是自己密码输错。
+        let configBlocked = false;
+        function showConfigError(msg) {
+            configBlocked = true;
+            showError(msg + '。请补全 crontab.json 中的 web_username / web_password，保存后等待热加载或重启服务。');
+            usernameInput.disabled = true;
+            passwordInput.disabled = true;
+            loginBtn.disabled = true;
+            loginBtn.textContent = '认证配置不完整';
+        }
+
+        // 进入登录页时先查一次登录态：已经登录、或根本没开启认证，直接回主页。
+        // 这个接口是公开的，不会触发任何浏览器原生认证弹窗。
+        (async function checkAuthStatus() {
+            try {
+                const resp = await fetch('/api/auth/status', { credentials: 'same-origin', cache: 'no-store' });
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (data.config_error) {
+                    showConfigError(data.config_error);
+                    return;
+                }
+                if (!data.auth_enabled || data.authenticated) {
+                    goIndex();
+                }
+            } catch (e) {
+                // 服务刚启动时网络可能尚未就绪，留在登录页让用户手动提交即可
+            }
+        })();
+
+        form.addEventListener('submit', async function (e) {
+            e.preventDefault();
+            if (configBlocked) return;
+            clearError();
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value;
+            if (!username || !password) {
+                showError('请输入用户名和密码');
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = '登录中...';
+            usernameInput.disabled = true;
+            passwordInput.disabled = true;
+
+            try {
+                const resp = await fetch('/api/login', {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                let data = {};
+                try { data = await resp.json(); } catch (e) {}
+
+                if (resp.ok && data.success) {
+                    goIndex();
+                    return;
+                }
+                showError(data.error || ('登录失败（HTTP ' + resp.status + '）'));
+                passwordInput.value = '';
+            } catch (e) {
+                showError('无法连接服务：' + (e && e.message ? e.message : '网络错误'));
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = '登 录';
+                usernameInput.disabled = false;
+                passwordInput.disabled = false;
+                passwordInput.focus();
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+# 源码与文档统一 LF：Windows runner 检出时若被转成 CRLF，
+# gofmt -l 会把所有 .go 文件判为「未格式化」，导致发布工作流失败。
+*.go         text eol=lf
+*.md         text eol=lf
+*.yml        text eol=lf
+*.json       text eol=lf
+*.html       text eol=lf
+*.mod        text eol=lf
+*.sum        text eol=lf
+LICENSE      text eol=lf
+.gitignore   text eol=lf
+.gitattributes text eol=lf
+
+# Windows 批处理脚本是 GBK + CRLF，按二进制原样保留，
+# 避免 Git 做换行符转换或编码猜测破坏脚本。
+*.bat        -text
+*.cmd        -text
+*.ps1        -text
