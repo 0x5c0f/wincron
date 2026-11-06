@@ -91,6 +91,11 @@ func (s *Server) newRouter() *gin.Engine {
 		api.GET("/validate", s.handleValidate)
 
 		api.GET("/notify/channels", s.handleNotifyChannels)
+		api.GET("/notify/channels/:name", s.handleGetNotifyChannel)
+		api.POST("/notify/channels", s.handleAddNotifyChannel)
+		api.PUT("/notify/channels/:name", s.handleUpdateNotifyChannel)
+		api.DELETE("/notify/channels/:name", s.handleDeleteNotifyChannel)
+		api.PUT("/notify/settings", s.handleUpdateNotifySettings)
 		api.POST("/notify/channels/:name/test", s.handleTestNotifyChannel)
 	}
 	return r
@@ -106,7 +111,7 @@ func (s *Server) Start() error {
 
 	fmt.Printf("[WinCron] Web管理界面监听: http://localhost:%d\n", s.port)
 	if s.authEnabled() {
-		fmt.Printf("[WinCron] 登录页面: http://localhost:%d/login （默认账号见 crontab.json）\n", s.port)
+		fmt.Printf("[WinCron] 登录页面: http://localhost:%d/login （使用管理员账号登录）\n", s.port)
 	}
 	return s.server.ListenAndServe()
 }
@@ -325,20 +330,48 @@ func (s *Server) handleToggleJob(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("任务已%s", status), "enabled": job.Enabled})
 }
 
-// handleGetLogs 获取日志
-func (s *Server) handleGetLogs(c *gin.Context) {
-	limit := 50
-	_, _ = fmt.Sscanf(c.DefaultQuery("limit", "50"), "%d", &limit)
-	logs := s.executor.GetAllLogs(limit)
-	c.JSON(http.StatusOK, gin.H{"logs": logs, "count": len(logs)})
+// parseLogPaging 解析并夹紧分页参数：每页最多 100 条，避免一次请求把
+// 全部历史日志（默认上限 500 条，可配置到 10 万条）序列化回浏览器。
+func parseLogPaging(c *gin.Context) (offset, limit int) {
+	limit, offset = 20, 0
+	_, _ = fmt.Sscanf(c.DefaultQuery("limit", "20"), "%d", &limit)
+	_, _ = fmt.Sscanf(c.DefaultQuery("offset", "0"), "%d", &offset)
+	if limit < 1 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return offset, limit
 }
 
-// handleGetJobLogs 获取指定任务的日志
+func (s *Server) writeLogPage(c *gin.Context, logs []executor.LogEntry, total, offset, limit int) {
+	c.JSON(http.StatusOK, gin.H{
+		"logs":        logs,
+		"count":       len(logs),
+		"total":       total,
+		"offset":      offset,
+		"limit":       limit,
+		"has_more":    offset+len(logs) < total,
+		"max_entries": s.configManager.GetAppConfig().LogMaxEntries,
+	})
+}
+
+// handleGetLogs 分页获取全部执行日志
+func (s *Server) handleGetLogs(c *gin.Context) {
+	offset, limit := parseLogPaging(c)
+	logs, total := s.executor.GetLogsPage("", offset, limit)
+	s.writeLogPage(c, logs, total, offset, limit)
+}
+
+// handleGetJobLogs 分页获取指定任务的日志
 func (s *Server) handleGetJobLogs(c *gin.Context) {
-	limit := 50
-	_, _ = fmt.Sscanf(c.DefaultQuery("limit", "50"), "%d", &limit)
-	logs := s.executor.GetLogs(c.Param("jobId"), limit)
-	c.JSON(http.StatusOK, gin.H{"logs": logs, "count": len(logs)})
+	offset, limit := parseLogPaging(c)
+	logs, total := s.executor.GetLogsPage(c.Param("jobId"), offset, limit)
+	s.writeLogPage(c, logs, total, offset, limit)
 }
 
 // handleScheduleInfo 获取调度信息

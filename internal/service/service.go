@@ -46,6 +46,7 @@ func NewService(configPath string) (*WinCronService, error) {
 
 	// 创建执行器（相对日志目录以 exe 所在目录为基准）
 	exec := executor.NewExecutor(appCfg.LogDir)
+	exec.SetLimits(appCfg.LogMaxEntries, int64(appCfg.LogMaxFileMB)<<20)
 	exec.StartLogCleanup(appCfg.LogRetentionDays)
 
 	// 通知渠道全部由 nikoksr/notify 的 service 提供。

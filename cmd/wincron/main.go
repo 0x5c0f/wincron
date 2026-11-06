@@ -595,7 +595,9 @@ func runDoctor(configPath string, testCommand string) {
 	if err := cm.Load(); err != nil {
 		fmt.Printf("[警告] 配置加载失败: %v，日志目录将使用默认值\n", err)
 	}
-	exec := executor.NewExecutor(cm.GetAppConfig().LogDir)
+	app := cm.GetAppConfig()
+	exec := executor.NewExecutor(app.LogDir)
+	exec.SetLimits(app.LogMaxEntries, int64(app.LogMaxFileMB)<<20)
 	defer exec.Close()
 	job := &config.JobConfig{
 		ID:       "doctor-test",

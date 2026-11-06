@@ -166,23 +166,20 @@ func (s *Server) authEnabled() bool {
 	return cfg.WebUsername != "" || cfg.WebPassword != ""
 }
 
-// authConfigError 返回半认证配置的说明。用户直接用记事本改 crontab.json 时，
-// 很容易只填 web_username 或只填 web_password。旧实现会产生两种坏状态：
-//   - 只有用户名：空密码即可登录；
-//   - 只有密码：登录接口返回成功，但会话因用户名为空立刻失效，表现为「怎么都登不进去」。
+// authConfigError 返回半认证配置的说明。只填了用户名或只填了密码时，
+// 旧实现会产生两种坏状态：空密码即可登录，或登录成功但会话立刻失效。
+// 现在统一 fail-closed：拒绝所有认证。
 //
-// 现在统一 fail-closed：拒绝所有认证，并返回带修复指引的明确错误。
+// 面向浏览器的文案刻意保持中性，不暴露配置文件名、字段名或缺失的是哪一项，
+// 避免登录页变成配置探测入口；管理员需要的详细修复指引仍由 CLI 的
+// validate / loadIssues 提供，不会受影响。
 func (s *Server) authConfigError() string {
 	cfg := s.configManager.GetAppConfig()
 	// 两个都空 = 免认证模式；两个都非空 = 正常认证；只有这两种是完整配置
 	if (cfg.WebUsername == "") == (cfg.WebPassword == "") {
 		return ""
 	}
-	missing := "web_password"
-	if cfg.WebUsername == "" {
-		missing = "web_username"
-	}
-	return "Web 认证配置不完整：缺少 " + missing + "，web_username 与 web_password 必须同时填写"
+	return "Web 认证配置不完整，当前拒绝所有登录；请联系管理员检查认证设置"
 }
 
 // authBlockedResponse 供登录接口与鉴权中间件共用的 fail-closed 响应
@@ -190,7 +187,7 @@ func authBlockedResponse(c *gin.Context, msg string) {
 	c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{
 		"success":      false,
 		"code":         "AUTH_CONFIG_ERROR",
-		"error":        msg + "；请补全 crontab.json 中的认证配置后重载，当前拒绝所有登录",
+		"error":        msg + "；当前拒绝所有登录，请联系管理员处理",
 		"config_error": msg,
 	})
 }

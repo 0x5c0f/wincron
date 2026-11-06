@@ -50,7 +50,9 @@ type AppConfig struct {
 	WebUsername      string `json:"web_username"`       // Web登录用户名
 	WebPassword      string `json:"web_password"`       // Web登录密码
 	LogDir           string `json:"log_dir"`            // 日志目录
-	LogRetentionDays int    `json:"log_retention_days"` // 日志保留天数
+	LogRetentionDays int    `json:"log_retention_days"` // 日志文件保留天数
+	LogMaxEntries    int    `json:"log_max_entries"`    // 内存中保留的执行日志条数上限（Web 分页的总量）
+	LogMaxFileMB     int    `json:"log_max_file_mb"`    // 单个任务日志文件的大小上限（MB），超出后保留最近内容
 	EnableSeconds    bool   `json:"enable_seconds"`     // 兼容保留：5/6字段现已自动识别，此开关不再影响解析
 
 	// 通知渠道统一由 nikoksr/notify 提供服务实现。
@@ -108,6 +110,8 @@ func DefaultConfig() *CrontabFile {
 			WebPassword:      "CHANGE_ME_BEFORE_USE",
 			LogDir:           "logs",
 			LogRetentionDays: 30,
+			LogMaxEntries:    500,
+			LogMaxFileMB:     10,
 			EnableSeconds:    true,
 			NotifyTimeout:    10,
 		},
@@ -210,6 +214,22 @@ func (cm *ConfigManager) Load() error {
 	}
 	if cfg.App.LogRetentionDays == 0 {
 		cfg.App.LogRetentionDays = def.LogRetentionDays
+	}
+	if cfg.App.LogMaxEntries == 0 {
+		cfg.App.LogMaxEntries = def.LogMaxEntries
+	} else if cfg.App.LogMaxEntries < 10 || cfg.App.LogMaxEntries > 100000 {
+		issues = append(issues, fmt.Sprintf(
+			"log_max_entries %d 无效（有效范围 10-100000），已回退到默认 %d",
+			cfg.App.LogMaxEntries, def.LogMaxEntries))
+		cfg.App.LogMaxEntries = def.LogMaxEntries
+	}
+	if cfg.App.LogMaxFileMB == 0 {
+		cfg.App.LogMaxFileMB = def.LogMaxFileMB
+	} else if cfg.App.LogMaxFileMB < 1 || cfg.App.LogMaxFileMB > 1024 {
+		issues = append(issues, fmt.Sprintf(
+			"log_max_file_mb %d 无效（有效范围 1-1024），已回退到默认 %d MB",
+			cfg.App.LogMaxFileMB, def.LogMaxFileMB))
+		cfg.App.LogMaxFileMB = def.LogMaxFileMB
 	}
 	if cfg.App.NotifyTimeout == 0 {
 		cfg.App.NotifyTimeout = def.NotifyTimeout
@@ -520,9 +540,13 @@ func (cm *ConfigManager) GetJobs() []JobConfig {
 	return jobs
 }
 
-// GetAppConfig 获取应用配置
+// GetAppConfig 获取应用配置副本。
+// NotifyChannels 是 slice，返回前必须深拷贝，否则调用方持有内部数组，
+// Web 端并发读写 / 热加载时可能与 saveLocked 互相踩踏。
 func (cm *ConfigManager) GetAppConfig() AppConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
-	return cm.config.App
+	app := cm.config.App
+	app.NotifyChannels = cloneChannels(app.NotifyChannels)
+	return app
 }

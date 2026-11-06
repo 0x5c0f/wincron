@@ -70,7 +70,6 @@
         .submit-btn:hover { opacity: 0.9; }
         .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .footer-note { text-align: center; font-size: 12px; color: rgba(255,255,255,0.8); margin-top: 20px; line-height: 1.8; }
-        .footer-note code { background: rgba(0,0,0,0.15); padding: 1px 5px; border-radius: 3px; }
     </style>
 </head>
 <body>
@@ -82,7 +81,7 @@
 
         <div class="card">
             <h2>登录管理控制台</h2>
-            <p class="subtitle">请输入配置文件中设置的账号和密码</p>
+            <p class="subtitle">请输入管理员账号和密码</p>
 
             <div id="errorMsg" class="error-msg" role="alert" aria-live="polite"></div>
 
@@ -102,8 +101,7 @@
         </div>
 
         <div class="footer-note">
-            账号来自 <code>crontab.json</code> 的 <code>web_username</code> / <code>web_password</code><br>
-            会话有效期 24 小时 · 修改密码后旧会话立即失效
+            登录会话有效期 24 小时 · 使用完毕后请及时退出
         </div>
     </div>
 
@@ -129,12 +127,13 @@
             window.location.replace('/');
         }
 
-        // 只填了用户名或只填了密码时，服务端会 fail-closed 拒绝所有登录。
-        // 登录页把配置错误直接显示出来，避免用户以为是自己密码输错。
+        // 认证配置不完整时服务端会 fail-closed 拒绝所有登录。
+        // 登录页只给中性提示，不回显服务端的具体配置细节，也不暴露
+        // 配置文件名与字段名；排障交给 CLI 的 validate 命令。
         let configBlocked = false;
-        function showConfigError(msg) {
+        function showConfigError() {
             configBlocked = true;
-            showError(msg + '。请补全 crontab.json 中的 web_username / web_password，保存后等待热加载或重启服务。');
+            showError('认证配置不完整，暂时无法登录。请联系管理员检查认证设置后重试。');
             usernameInput.disabled = true;
             passwordInput.disabled = true;
             loginBtn.disabled = true;
@@ -149,7 +148,7 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (data.config_error) {
-                    showConfigError(data.config_error);
+                    showConfigError();
                     return;
                 }
                 if (!data.auth_enabled || data.authenticated) {

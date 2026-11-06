@@ -253,9 +253,11 @@ wincron.exe uninstall
 | `web_password` | string | `CHANGE_ME_BEFORE_USE` | Web 登录密码，**必须修改** |
 | `log_dir` | string | `logs` | 日志目录，相对路径以 exe 目录为基准 |
 | `log_retention_days` | int | `30` | 日志保留天数，过期自动清理 |
+| `log_max_entries` | int | `500` | 内存中保留的执行日志条数上限（也是 Web 分页的总量）；有效范围 `10`-`100000`，越界回退默认并在 `validate` 中报告 |
+| `log_max_file_mb` | int | `10` | 单个任务 `.log` 文件的体积上限（MB）；接近上限时保留最近半份内容并在文件头写入裁剪说明，有效范围 `1`-`1024` |
 | `enable_seconds` | bool | `true` | 兼容保留；5 / 6 字段 cron 现在自动识别，此开关不再影响解析 |
 | `notify_channels` | array | `[]` | 全局**命名通知渠道**定义，见[第十节](#十通知与日志)；凭据可写 `${ENV:NAME}` |
-| `notify_timeout` | int | `10` | 单个渠道发送超时秒数，`0` 按默认 10 秒；渠道内 `timeout` 可单独覆盖 |
+| `notify_timeout` | int | `10` | **全局**通知发送超时秒数，有效范围 `1`-`300`；渠道内 `timeout` 为 `0` 时使用该值，非 `0` 则单独覆盖。Web「通知渠道」页可直接修改 |
 
 > 通知渠道定义集中在 `app.notify_channels`，任务只按 `name` 引用。旧版的 `app.smtp_*`、`notify.webhooks`、`notify.emails` 已删除；首次加载旧配置时会自动迁移并备份，见第十节。
 
@@ -317,9 +319,14 @@ wincron.exe uninstall
 ## 八、Web 管理界面
 
 - 地址：`http://localhost:<web_port>`，默认 `9090`。
-- **独立登录页** `/login`：纯页面表单，不是浏览器原生认证弹窗。会话由服务端 HMAC 签名的 HttpOnly Cookie 维护，支持退出登录（服务端吊销令牌）、登录失败限流。
+- **独立登录页** `/login`：纯页面表单，不是浏览器原生认证弹窗。会话由服务端 HMAC 签名的 HttpOnly Cookie 维护，支持退出登录（服务端吊销令牌）、登录失败限流。登录页不显示账号来自哪个配置文件或哪些配置字段；详细排障信息只由 CLI `validate` 提供。
 - 页面：任务列表（增删改、启停、立即执行、cron 前置校验）、执行日志、运行环境诊断、**通知渠道**、服务状态。
-- **通知渠道页**：展示每个渠道的名称 / 类型 / 是否可用 / 构造失败原因，可对可用渠道点「测试发送」；任务编辑弹窗里按复选框选择要发到哪些渠道，成功 / 失败时机分别可勾选。接口只返回名称与状态，**不回传任何凭据**。
+- **页面位置记忆**：切换页签会写入 URL hash（`#jobs` / `#logs` / `#doctor` / `#notify`），刷新后仍停留在当前页；浏览器前进/后退也能正常切换。
+- **自定义下拉**：日志任务筛选、任务启用状态、渠道类型、每页条数都用统一的自定义组件，不使用浏览器原生 `<select>`；支持鼠标、上下方向键、Enter、Esc、Tab 与点击外部关闭，菜单以浮层渲染，不会被弹窗的滚动区域裁剪。
+- **执行日志分页**：默认每页 20 条，可切到 50 / 100 条，提供上一页 / 下一页与总数、当前区间、内存保留上限提示。日志总量本身受 `app.log_max_entries` 约束，不会无限增长。
+- **运行环境页**：关键环境变量改为自适应网格卡片，长值折行并可「展开完整值」，卡片不再出现横向或纵向滚动条。
+- **通知渠道页**：可直接新增、编辑、删除渠道并调整发送超时，保存后立即重建通知器生效，无需等待 10 秒热加载。表单按渠道类型动态渲染必填字段，凭据字段默认掩码显示、可切换明文、支持 `${ENV:NAME}`。渠道名称保存后不可修改（任务按名称引用）；被任务引用的渠道禁止删除。任务编辑弹窗里按复选框选择渠道，成功 / 失败时机分别可勾选。
+- **凭据隔离**：渠道列表接口只返回名称 / 类型 / 必填字段和就绪状态，**不回传任何凭据**；完整定义仅由单渠道详情接口按需返回，并带 `Cache-Control: no-store`。
 - 右上角显示当前用户并提供「退出登录」；会话过期会自动跳回登录页。
 
 ### HTTP API
@@ -342,12 +349,17 @@ wincron.exe uninstall
 | GET / PUT / DELETE | `/api/jobs/:id` | 查询 / 修改 / 删除任务 |
 | POST | `/api/jobs/:id/run` | 立即执行一次 |
 | POST | `/api/jobs/:id/toggle` | 启用 / 禁用 |
-| GET | `/api/logs`、`/api/logs/:jobId` | 日志列表 / 指定任务日志 |
+| GET | `/api/logs`、`/api/logs/:jobId` | 分页日志列表 / 指定任务分页日志；查询参数 `offset`（默认 0）、`limit`（默认 20，上限 100）。响应含 `logs`、`count`、`total`、`offset`、`limit`、`has_more`、`max_entries` |
 | GET | `/api/schedule/info` | 当前调度表 |
 | POST | `/api/schedule/reload` | 触发重载 |
 | GET | `/api/doctor` | 运行环境诊断 |
 | GET | `/api/validate` | 配置校验结果（含渠道与引用问题） |
-| GET | `/api/notify/channels` | 渠道定义（仅 name/type/required）、就绪状态、支持类型、构造错误 |
+| GET | `/api/notify/channels` | 渠道定义（仅 name/type/required）、就绪状态、支持类型、`required_map`、`notify_timeout`、构造错误；**不含凭据** |
+| GET | `/api/notify/channels/:name` | 单个渠道完整定义（含凭据），响应带 `Cache-Control: no-store`，仅编辑弹窗按需读取 |
+| POST | `/api/notify/channels` | 新增渠道，走与直接编辑配置文件相同的校验并原子写回 |
+| PUT | `/api/notify/channels/:name` | 整体替换渠道；名称不可修改，改动立即重建通知器 |
+| DELETE | `/api/notify/channels/:name` | 删除渠道；被任务引用时返回 `400` 并指出引用任务 |
+| PUT | `/api/notify/settings` | 修改 `notify_timeout`（1-300 秒） |
 | POST | `/api/notify/channels/:name/test` | 向指定渠道发送一条测试通知；渠道不可用返回 `502` |
 
 脚本示例：
@@ -400,7 +412,15 @@ exit /b 0
 
 ### 日志
 
-`logs/<任务ID>.log` 记录开始/结束时间、退出码、耗时、标准输出与错误输出；`log_retention_days` 控制自动清理。
+`logs/<任务ID>.log` 记录开始/结束时间、退出码、耗时、标准输出与错误输出。日志有**三层上限**，避免高频任务把内存和磁盘撑满：
+
+| 层面 | 配置 | 默认 | 行为 |
+|---|---|---|---|
+| 内存条数 | `log_max_entries` | `500` | 只保留最近 N 条，也是 Web 分页能看到的总量；调小上限会立即裁剪已有记录 |
+| 单文件体积 | `log_max_file_mb` | `10 MB` | 写入前检查体积，接近上限时保留最近半份内容，并在文件头写入裁剪说明；并发写同一任务日志时串行化裁剪与追加 |
+| 文件天数 | `log_retention_days` | `30` 天 | 后台定时清理过期 `.log`，始终保留 `environment.log` |
+
+Web「执行日志」页按 `offset` / `limit` 分页读取内存日志，每页最多 100 条；接口同时回传 `total`、`has_more` 与 `max_entries`，前端据此展示页码与保留上限。这三个字段都支持配置热加载，改完 `crontab.json` 无需重启服务。
 
 ### 通知层设计：全部基于 nikoksr/notify
 
@@ -440,6 +460,8 @@ exit /b 0
 {
   "app": {
     "notify_timeout": 10,
+    "log_max_entries": 500,
+    "log_max_file_mb": 10,
     "notify_channels": [
       {
         "name": "ops-wecom",
@@ -492,7 +514,7 @@ wincron.exe notify list                 :: 渠道是否可用、构造失败原�
 wincron.exe notify test ops-wecom       :: 真实发一条测试通知
 ```
 
-Web「通知渠道」页同样提供状态与「测试发送」按钮；`GET /api/notify/channels` 可脚本化查询。渠道发送失败、5xx、网络不可达都会写进服务日志。
+Web「通知渠道」页可以直接新增 / 编辑 / 删除渠道、修改发送超时，并对可用渠道点「测试发送」；保存时与 `wincron notify` 一样走完整校验、原子写回配置文件，并立即重建通知器。`GET /api/notify/channels` 可脚本化查询（不含凭据），`GET /api/notify/channels/:name` 才会返回编辑所需的完整定义。渠道发送失败、5xx、网络不可达都会写进服务日志。
 
 ### 旧配置自动迁移
 
@@ -621,7 +643,7 @@ git push origin v1.0.0-rc.1
 ## 十四、安全须知
 
 - **必须修改 `web_password`**：内置值 `CHANGE_ME_BEFORE_USE` 只是占位符，任何能访问 Web 端口的人都能用它登录并增删任务。
-- 配置文件里包含 Web 密码、通知渠道 token / 邮箱密码、可选的服务账户密码，请限制该文件的 ACL，不要提交到公开仓库（本仓库 `.gitignore` 已忽略运行时的 `crontab.json`）。通知凭据强烈建议写成 `${ENV:NAME}` 并设为系统环境变量；Web 的 `/api/notify/channels` 只返回名称与状态，不回传凭据，但配置文件本身仍是敏感文件。
+- 配置文件里包含 Web 密码、通知渠道 token / 邮箱密码、可选的服务账户密码，请限制该文件的 ACL，不要提交到公开仓库（本仓库 `.gitignore` 已忽略运行时的 `crontab.json`）。通知凭据强烈建议写成 `${ENV:NAME}` 并设为系统环境变量；Web 的 `/api/notify/channels` 只返回名称与状态，不回传凭据。只有在已登录会话里打开编辑弹窗时，`/api/notify/channels/:name` 才会返回单个渠道的完整定义，该响应带 `Cache-Control: no-store`；配置文件本身仍是敏感文件。
 - 默认 Web 监听 `9090`，建议仅在本机/内网访问，必要时用防火墙限制来源。
 - 任务是**以服务账户权限执行任意命令**的，等同于给配置文件写入者该权限；不要给不可信来源开放配置修改能力。
 - 会话密钥由进程随机生成、不落盘；修改用户名/密码、重启进程、会话过期、主动登出都会使旧会话失效。
@@ -655,7 +677,7 @@ A：不能。通用 `http` 渠道发的是 notify 默认的 `{"subject","message
 A：能，第一次加载会自动迁移成命名渠道并改写 `crontab.json`，原文件逐字节备份在 `crontab.json.pre-notify.bak`。迁移后建议把凭据改成 `${ENV:NAME}`，并用 `notify list` / `notify test` 复核。
 
 **Q：通知渠道的凭据会被 Web 页面看到吗？**
-A：`/api/notify/channels` 只返回 `name` / `type` / `required` 和就绪状态，不返回 `url` / `token` / `password`；但 `crontab.json` 本身仍含这些值（或环境变量名），请限制文件 ACL。
+A：`/api/notify/channels` 只返回 `name` / `type` / `required` 和就绪状态，不返回 `url` / `token` / `password`；只有 `/api/notify/channels/:name` 会在已登录会话中返回完整定义并禁止缓存。但 `crontab.json` 本身仍含这些值（或环境变量名），请限制文件 ACL。
 
 **Q：服务启动、配置变更、任务超时被杀会发通知吗？**
 A：不会。当前只有「任务执行结束」一个触发点，且按 `on_success` / `on_failure` 决定；失败原因可从任务日志和服务日志查看。

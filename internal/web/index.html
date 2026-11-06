@@ -7,10 +7,10 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f2f5; color: #333; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; }
+        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
         .header h1 { font-size: 22px; font-weight: 600; }
         .header .status { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-        .header-right { display: flex; align-items: center; gap: 22px; }
+        .header-right { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
         .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #4caf50; box-shadow: 0 0 6px #4caf50; }
         .status-dot.stopped { background: #f44336; box-shadow: 0 0 6px #f44336; }
         .user-box { display: flex; align-items: center; gap: 10px; }
@@ -18,16 +18,17 @@
         .btn-logout { background: rgba(255,255,255,0.18); color: white; border: 1px solid rgba(255,255,255,0.4); }
         .btn-logout:hover { background: rgba(255,255,255,0.32); }
         .container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
-        .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
-        .stat-card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); min-width: 0; }
         .stat-card .label { font-size: 13px; color: #888; margin-bottom: 6px; }
         .stat-card .value { font-size: 28px; font-weight: 700; color: #333; }
         .stat-card .value.green { color: #4caf50; }
         .stat-card .value.blue { color: #2196f3; }
         .stat-card .value.orange { color: #ff9800; }
         .panel { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 24px; }
-        .panel-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .panel-header { padding: 16px 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
         .panel-header h2 { font-size: 16px; font-weight: 600; }
+        .panel-header .panel-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
         .panel-body { padding: 0; }
         table { width: 100%; border-collapse: collapse; }
         th { text-align: left; padding: 12px 16px; font-size: 12px; color: #888; font-weight: 600; text-transform: uppercase; border-bottom: 1px solid #eee; }
@@ -39,6 +40,7 @@
         .badge-danger { background: #ffebee; color: #c62828; }
         .badge-info { background: #e3f2fd; color: #1565c0; }
         .btn { padding: 6px 14px; border: none; border-radius: 4px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+        .btn:disabled { opacity: 0.45; cursor: not-allowed; }
         .btn-primary { background: #667eea; color: white; }
         .btn-primary:hover { background: #5568d3; }
         .btn-sm { padding: 4px 10px; font-size: 12px; }
@@ -48,37 +50,93 @@
         .btn-success:hover { background: #388e3c; }
         .btn-default { background: #eee; color: #333; }
         .btn-default:hover { background: #ddd; }
-        .actions { display: flex; gap: 6px; }
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; }
+        .btn-link { background: none; color: #667eea; padding: 2px 4px; font-size: 12px; }
+        .btn-link:hover { text-decoration: underline; }
+        .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
         .modal-overlay.active { display: flex; }
-        .modal { background: white; border-radius: 8px; padding: 24px; width: 520px; max-height: 80vh; overflow-y: auto; }
+        .modal { background: white; border-radius: 8px; padding: 24px; width: 520px; max-width: 100%; max-height: 88vh; overflow-y: auto; }
+        .modal.wide { width: 620px; }
         .modal h2 { margin-bottom: 20px; font-size: 18px; }
         .form-group { margin-bottom: 16px; }
         .form-group label { display: block; margin-bottom: 6px; font-size: 13px; color: #666; font-weight: 500; }
-        .form-group input, .form-group textarea, .form-group select { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        .form-group input, .form-group textarea { width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; font-family: inherit; }
         .form-group input:focus, .form-group textarea:focus { outline: none; border-color: #667eea; }
-        .form-group .hint { font-size: 11px; color: #aaa; margin-top: 4px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-group input:disabled { background: #f5f5f5; color: #888; }
+        .form-group .hint { font-size: 11px; color: #aaa; margin-top: 4px; line-height: 1.6; }
+        .form-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
         .modal-footer { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; }
+        .tab-bar { display: flex; gap: 4px; margin-bottom: 16px; flex-wrap: wrap; }
         .tab { padding: 8px 20px; border: none; background: none; cursor: pointer; font-size: 14px; color: #888; border-bottom: 2px solid transparent; }
         .tab.active { color: #667eea; border-bottom-color: #667eea; font-weight: 600; }
         .log-entry { padding: 12px 16px; border-bottom: 1px solid #f5f5f5; font-family: monospace; font-size: 13px; }
-        .log-entry .log-header { display: flex; justify-content: space-between; margin-bottom: 4px; }
-        .log-entry .log-time { color: #888; }
-        .log-entry .log-status { font-weight: 600; }
-        .log-entry .log-output { white-space: pre-wrap; word-break: break-all; color: #555; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 4px; margin-top: 4px; }
-        .empty { text-align: center; padding: 40px; color: #aaa; }
+        .log-entry .log-header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
+        .log-entry .log-time { color: #888; white-space: nowrap; }
+        .log-entry .log-status { font-weight: 600; word-break: break-word; }
+        .log-entry .log-output { white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; color: #555; max-height: 200px; overflow-y: auto; background: #f9f9f9; padding: 8px; border-radius: 4px; margin-top: 4px; }
+        .empty { text-align: center; padding: 40px 20px; color: #aaa; }
         .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
         .toggle input { opacity: 0; width: 0; height: 0; }
         .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; border-radius: 20px; transition: 0.3s; }
         .toggle-slider:before { content: ""; position: absolute; height: 16px; width: 16px; left: 2px; bottom: 2px; background: white; border-radius: 50%; transition: 0.3s; }
         .toggle input:checked + .toggle-slider { background: #4caf50; }
         .toggle input:checked + .toggle-slider:before { transform: translateX(16px); }
-        .toast { position: fixed; top: 20px; right: 20px; z-index: 2000; min-width: 240px; max-width: 440px; padding: 12px 16px; border-radius: 6px; color: white; font-size: 13px; line-height: 1.6; box-shadow: 0 4px 16px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-10px); transition: all 0.25s; pointer-events: none; }
+        .toast { position: fixed; top: 20px; right: 20px; z-index: 4000; min-width: 240px; max-width: 440px; padding: 12px 16px; border-radius: 6px; color: white; font-size: 13px; line-height: 1.6; box-shadow: 0 4px 16px rgba(0,0,0,0.2); opacity: 0; transform: translateY(-10px); transition: all 0.25s; pointer-events: none; }
         .toast.show { opacity: 1; transform: translateY(0); }
         .toast-success { background: #43a047; }
         .toast-error { background: #e53935; }
+
+        /* 自定义下拉：不使用浏览器原生控件，样式完全可控，且菜单挂在 body 上，
+           不受弹窗 overflow-y:auto 的裁剪影响。 */
+        .wc-select { position: relative; width: 100%; font-size: 14px; outline: none; }
+        .wc-select.compact { width: 190px; font-size: 13px; }
+        .wc-select.tiny { width: 104px; font-size: 12px; }
+        .wc-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; background: #fff; cursor: pointer; user-select: none; transition: border-color .18s, box-shadow .18s; }
+        .wc-select.compact .wc-select-trigger, .wc-select.tiny .wc-select-trigger { padding: 5px 10px; }
+        .wc-select-trigger:hover { border-color: #b9c0f0; }
+        .wc-select.open .wc-select-trigger, .wc-select:focus-visible .wc-select-trigger { border-color: #667eea; box-shadow: 0 0 0 3px rgba(102,126,234,0.12); }
+        .wc-select-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .wc-select-arrow { flex: none; width: 7px; height: 7px; border-right: 2px solid #999; border-bottom: 2px solid #999; transform: translateY(-2px) rotate(45deg); transition: transform .18s; }
+        .wc-select.open .wc-select-arrow { transform: translateY(1px) rotate(225deg); }
+        .wc-select-menu { position: fixed; display: none; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; box-shadow: 0 10px 28px rgba(0,0,0,0.16); z-index: 3000; max-height: 260px; overflow-y: auto; padding: 4px; }
+        .wc-select-menu.open { display: block; }
+        .wc-select-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1.4; }
+        .wc-select-option > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .wc-select-option:hover, .wc-select-option.hover { background: #f0f2ff; }
+        .wc-select-option.selected { background: #eef0ff; color: #4a56c9; font-weight: 600; }
+        .wc-select-option .wc-sub { flex: none; font-size: 11px; color: #aaa; font-weight: 400; }
+        .wc-select-option .wc-check { flex: none; color: #667eea; }
+
+        /* 日志分页 */
+        .pager { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px; border-top: 1px solid #eee; font-size: 13px; color: #777; }
+        .pager .pager-info { flex: 1 1 240px; line-height: 1.7; }
+        .pager .pager-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .pager .pager-page { min-width: 96px; text-align: center; font-weight: 600; color: #444; }
+
+        /* 运行环境：自适应网格 + 长值折行，容器不设固定高度 / overflow，彻底去掉横纵滚动条 */
+        /* align-items:start：展开某个超长变量时，只让该卡片自己变高，
+           同排其它卡片不会被拉伸成一大片空白背景框。 */
+        .env-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 10px; align-items: start; }
+        .env-item { min-width: 0; background: #f9f9fb; border: 1px solid #eee; border-radius: 6px; padding: 10px 12px; }
+        .env-key { font-family: monospace; font-size: 12px; color: #667eea; font-weight: 600; margin-bottom: 5px; word-break: break-all; }
+        .env-value { font-family: monospace; font-size: 12px; line-height: 1.7; color: #444; white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere; }
+        .env-value.muted { color: #aaa; }
+        .env-toggle { margin-top: 5px; }
+        .env-more { margin-top: 6px; font-size: 11px; color: #aaa; }
+        .doctor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; margin-bottom: 20px; }
+        .doctor-note { font-size: 12px; color: #888; margin-top: 16px; line-height: 1.8; word-break: break-all; overflow-wrap: anywhere; }
+        .notice-block { padding: 12px 16px; border-radius: 4px; font-size: 13px; line-height: 1.9; word-break: break-word; overflow-wrap: anywhere; }
+
+        /* 通知渠道配置 */
+        .notify-settings { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 20px; background: #fafbff; border-bottom: 1px solid #eee; font-size: 13px; color: #666; }
+        .notify-settings input { width: 90px; padding: 5px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; }
+        .notify-settings .hint { font-size: 11px; color: #aaa; }
+        .type-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+        .type-chip { padding: 3px 9px; border-radius: 12px; background: #eef0ff; color: #4a56c9; font-size: 11px; font-family: monospace; }
+        .secret-row { display: flex; align-items: center; gap: 6px; }
+        .secret-row input { flex: 1; }
+        .secret-row .btn-link { white-space: nowrap; }
+        .channel-error { color: #c62828; font-size: 13px; margin-top: 8px; line-height: 1.7; word-break: break-word; }
     </style>
 </head>
 <body>
@@ -120,10 +178,10 @@
         </div>
 
         <div class="tab-bar">
-            <button id="tabJobs" class="tab active" onclick="switchTab('jobs', this)">任务列表</button>
-            <button id="tabLogs" class="tab" onclick="switchTab('logs', this)">执行日志</button>
-            <button id="tabDoctor" class="tab" onclick="switchTab('doctor', this)">运行环境</button>
-            <button id="tabNotify" class="tab" onclick="switchTab('notify', this)">通知渠道</button>
+            <button id="tabJobs" data-tab="jobs" class="tab active" onclick="switchTab('jobs')">任务列表</button>
+            <button id="tabLogs" data-tab="logs" class="tab" onclick="switchTab('logs')">执行日志</button>
+            <button id="tabDoctor" data-tab="doctor" class="tab" onclick="switchTab('doctor')">运行环境</button>
+            <button id="tabNotify" data-tab="notify" class="tab" onclick="switchTab('notify')">通知渠道</button>
         </div>
 
         <div id="jobsPanel" class="panel">
@@ -154,22 +212,39 @@
         <div id="logsPanel" class="panel" style="display:none;">
             <div class="panel-header">
                 <h2>执行日志</h2>
-                <div>
-                    <select id="jobFilter" onchange="loadLogs()" style="padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
-                        <option value="">全部任务</option>
-                    </select>
-                    <button class="btn btn-default btn-sm" onclick="loadLogs()">刷新</button>
+                <div class="panel-tools">
+                    <div id="jobFilterSelect"></div>
+                    <button class="btn btn-default btn-sm" onclick="refreshLogs()">刷新</button>
                 </div>
             </div>
             <div class="panel-body" id="logsBody">
                 <div class="empty">加载中...</div>
+            </div>
+            <div id="logsPager" class="pager">
+                <div class="pager-info" id="logsPagerInfo">加载中...</div>
+                <div class="pager-controls">
+                    <button id="logsPrevBtn" class="btn btn-default btn-sm" onclick="gotoLogPage(-1)" disabled>上一页</button>
+                    <span class="pager-page" id="logsPageNum">第 1 页</span>
+                    <button id="logsNextBtn" class="btn btn-default btn-sm" onclick="gotoLogPage(1)" disabled>下一页</button>
+                    <div id="logsLimitSelect"></div>
+                </div>
             </div>
         </div>
 
         <div id="notifyPanel" class="panel" style="display:none;">
             <div class="panel-header">
                 <h2>通知渠道 <span style="font-size:12px;color:#888;font-weight:400;">由 nikoksr/notify 提供实现</span></h2>
-                <button class="btn btn-default btn-sm" onclick="loadNotifyChannels()">刷新</button>
+                <div class="panel-tools">
+                    <button class="btn btn-default btn-sm" onclick="loadNotifyChannels()">刷新</button>
+                    <button class="btn btn-primary btn-sm" onclick="showChannelModal()">+ 添加渠道</button>
+                </div>
+            </div>
+            <div class="notify-settings">
+                <span>全局通知发送超时</span>
+                <input type="number" id="notifyTimeout" min="1" max="300" value="10">
+                <span>秒</span>
+                <button class="btn btn-default btn-sm" onclick="saveNotifyTimeout()">保存</button>
+                <span class="hint">有效范围 1-300 秒；留空则沿用当前设置，单个渠道可在编辑弹窗中单独覆盖</span>
             </div>
             <div class="panel-body" style="padding:16px 20px;" id="notifyBody">
                 <div class="empty">加载中...</div>
@@ -222,15 +297,12 @@
                 </div>
                 <div class="form-group">
                     <label>是否启用</label>
-                    <select id="jobEnabled">
-                        <option value="true">启用</option>
-                        <option value="false">禁用</option>
-                    </select>
+                    <div id="jobEnabledSelect"></div>
                 </div>
             </div>
             <div class="form-group">
                 <label>通知时机</label>
-                <div style="display:flex; gap:24px; padding:6px 2px; font-weight:400;">
+                <div style="display:flex; gap:24px; padding:6px 2px; font-weight:400; flex-wrap:wrap;">
                     <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
                         <input type="checkbox" id="jobNotifyFailure"> 失败时通知
                     </label>
@@ -241,11 +313,11 @@
             </div>
             <div class="form-group">
                 <label>通知渠道</label>
-                <div id="jobNotifyChannels" style="padding:6px 2px; max-height:120px; overflow-y:auto; font-weight:400; color:#666;">
+                <div id="jobNotifyChannels" style="padding:6px 2px; font-weight:400; color:#666;">
                     加载中...
                 </div>
                 <div style="font-size:12px; color:#999; font-weight:400; margin-top:4px;">
-                    渠道在 crontab.json 的 app.notify_channels 中定义；可在「通知渠道」页查看状态与测试发送。
+                    可在「通知渠道」页新增、编辑或删除渠道；任务只需勾选要使用的渠道名称。
                 </div>
             </div>
             <div class="modal-footer">
@@ -255,8 +327,44 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="channelModal">
+        <div class="modal wide">
+            <h2 id="channelModalTitle">添加通知渠道</h2>
+            <input type="hidden" id="channelOriginalName">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>渠道类型</label>
+                    <div id="channelTypeSelect"></div>
+                    <div class="hint" id="channelRequiredHint"></div>
+                </div>
+                <div class="form-group">
+                    <label>渠道名称（保存后不可修改）</label>
+                    <input type="text" id="channelName" placeholder="例如：ops-wecom">
+                </div>
+            </div>
+            <div id="channelFields"></div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>本渠道发送超时（秒，0=使用全局设置）</label>
+                    <input type="number" id="channelTimeout" min="0" value="0">
+                </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+                <div class="hint">敏感字段支持 <code>${ENV:变量名}</code> 引用环境变量，避免凭据以明文写入配置文件。列表接口不回传凭据，仅编辑本弹窗时按需读取，且响应禁止缓存。</div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-default" onclick="closeChannelModal()">取消</button>
+                <button id="saveChannelBtn" class="btn btn-primary" onclick="saveChannel()">保存</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const apiBase = '/api';
+        const TABS = ['jobs', 'logs', 'doctor', 'notify'];
+        let currentTab = null;
+        const wcSelectInstances = [];
+        const selects = {};
 
         function showToast(msg, type) {
             const el = document.getElementById('toast');
@@ -328,6 +436,208 @@
             window.location.replace('/login');
         }
 
+        // ---------- 自定义下拉组件 ----------
+        // 替代所有原生 select：统一样式、支持键盘导航、点击外部关闭。
+        // 菜单以 fixed 定位挂在 body 上，避免被弹窗的 overflow-y:auto 裁剪。
+        class WcSelect {
+            constructor(mountId, config) {
+                this.root = document.getElementById(mountId);
+                if (!this.root) throw new Error('下拉挂载点不存在: ' + mountId);
+                this.cfg = Object.assign({ options: [], value: '', placeholder: '请选择', onChange: null, onReset: null, compact: false, tiny: false }, config || {});
+                this.options = (this.cfg.options || []).slice();
+                this.value = String(this.cfg.value || '');
+                this.isOpen = false;
+                this.hoverIndex = -1;
+
+                this.root.className = 'wc-select' + (this.cfg.compact ? ' compact' : '') + (this.cfg.tiny ? ' tiny' : '');
+                this.root.innerHTML = '<div class="wc-select-trigger" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false">' +
+                    '<span class="wc-select-text"></span><span class="wc-select-arrow"></span></div>';
+                this.trigger = this.root.querySelector('.wc-select-trigger');
+                this.textEl = this.root.querySelector('.wc-select-text');
+
+                this.menu = document.createElement('div');
+                this.menu.className = 'wc-select-menu';
+                this.menu.setAttribute('role', 'listbox');
+                document.body.appendChild(this.menu);
+
+                this.root.addEventListener('click', (e) => {
+                    if (e.target.closest('.wc-select-trigger')) this.toggle();
+                });
+                this.root.addEventListener('keydown', (e) => this.onKey(e));
+                this.menu.addEventListener('click', (e) => {
+                    const opt = e.target.closest('.wc-select-option');
+                    if (opt) this.pick(opt.dataset.value);
+                });
+                document.addEventListener('mousedown', (e) => {
+                    if (!this.isOpen) return;
+                    if (this.root.contains(e.target) || this.menu.contains(e.target)) return;
+                    this.close();
+                });
+                window.addEventListener('resize', () => { if (this.isOpen) this.positionMenu(); });
+                // 键盘导航会调用 scrollIntoView；若滚动时直接关闭菜单，方向键就会失效，
+                // 因此这里只重新定位，不关闭。
+                window.addEventListener('scroll', () => { if (this.isOpen) this.positionMenu(); }, true);
+
+                wcSelectInstances.push(this);
+                this.updateView();
+            }
+
+            current() {
+                return this.options.find(o => String(o.value) === String(this.value));
+            }
+
+            renderMenu() {
+                this.menu.innerHTML = this.options.map((o, i) => {
+                    const selected = String(o.value) === String(this.value);
+                    return '<div class="wc-select-option' + (selected ? ' selected' : '') + (i === this.hoverIndex ? ' hover' : '') + '"' +
+                        ' role="option" aria-selected="' + selected + '" data-value="' + escapeHtml(o.value) + '" data-index="' + i + '">' +
+                        '<span>' + escapeHtml(o.label) + '</span>' +
+                        (o.sub ? '<span class="wc-sub">' + escapeHtml(o.sub) + '</span>' : '') +
+                        (selected ? '<span class="wc-check">✓</span>' : '') +
+                        '</div>';
+                }).join('');
+            }
+
+            positionMenu() {
+                const r = this.trigger.getBoundingClientRect();
+                const h = this.menu.offsetHeight || 240;
+                const below = window.innerHeight - r.bottom;
+                const up = below < Math.min(h + 12, 260) && r.top > below;
+                this.menu.style.left = r.left + 'px';
+                this.menu.style.width = r.width + 'px';
+                if (up) {
+                    this.menu.style.top = 'auto';
+                    this.menu.style.bottom = (window.innerHeight - r.top + 6) + 'px';
+                } else {
+                    this.menu.style.bottom = 'auto';
+                    this.menu.style.top = (r.bottom + 6) + 'px';
+                }
+            }
+
+            updateView() {
+                const cur = this.current();
+                this.textEl.textContent = cur ? cur.label : this.cfg.placeholder;
+                this.root.classList.toggle('open', this.isOpen);
+                this.menu.classList.toggle('open', this.isOpen);
+                this.trigger.setAttribute('aria-expanded', String(this.isOpen));
+                if (this.isOpen) {
+                    this.renderMenu();
+                    this.positionMenu();
+                }
+            }
+
+            openMenu() {
+                wcSelectInstances.forEach(s => { if (s !== this) s.close(); });
+                this.isOpen = true;
+                const idx = this.options.findIndex(o => String(o.value) === String(this.value));
+                this.hoverIndex = idx >= 0 ? idx : (this.options.length ? 0 : -1);
+                this.updateView();
+            }
+
+            close() {
+                if (!this.isOpen) return;
+                this.isOpen = false;
+                this.hoverIndex = -1;
+                this.updateView();
+            }
+
+            toggle() { this.isOpen ? this.close() : this.openMenu(); }
+
+            pick(v) {
+                const changed = String(v) !== String(this.value);
+                this.value = String(v);
+                this.close();
+                if (changed && typeof this.cfg.onChange === 'function') this.cfg.onChange(this.value);
+            }
+
+            onKey(e) {
+                const k = e.key;
+                if (!this.isOpen) {
+                    if (k === 'ArrowDown' || k === 'Enter' || k === ' ') {
+                        e.preventDefault();
+                        this.openMenu();
+                    }
+                    return;
+                }
+                if (k === 'ArrowDown' || k === 'ArrowUp') {
+                    e.preventDefault();
+                    if (!this.options.length) return;
+                    const d = k === 'ArrowDown' ? 1 : -1;
+                    this.hoverIndex = (this.hoverIndex + d + this.options.length) % this.options.length;
+                    this.renderMenu();
+                    const el = this.menu.querySelector('.wc-select-option.hover');
+                    if (el) el.scrollIntoView({ block: 'nearest' });
+                    return;
+                }
+                if (k === 'Home' || k === 'End') {
+                    e.preventDefault();
+                    this.hoverIndex = k === 'Home' ? 0 : this.options.length - 1;
+                    this.renderMenu();
+                    return;
+                }
+                if (k === 'Enter' || k === ' ') {
+                    e.preventDefault();
+                    const o = this.options[this.hoverIndex];
+                    if (o) this.pick(o.value);
+                    return;
+                }
+                if (k === 'Escape') { e.preventDefault(); this.close(); return; }
+                if (k === 'Tab') this.close();
+            }
+
+            setOptions(list, keepValue) {
+                this.options = (list || []).slice();
+                if (!keepValue) this.value = this.options.length ? String(this.options[0].value) : '';
+                if (!this.options.some(o => String(o.value) === String(this.value))) {
+                    this.value = this.options.length ? String(this.options[0].value) : '';
+                    if (typeof this.cfg.onReset === 'function') this.cfg.onReset(this.value);
+                }
+                this.updateView();
+            }
+
+            setValue(v, silent) {
+                this.value = String(v);
+                this.updateView();
+                if (!silent && typeof this.cfg.onChange === 'function') this.cfg.onChange(this.value);
+            }
+
+            getValue() { return this.value; }
+        }
+
+        // ---------- 页面切换与刷新后保持 ----------
+        function tabFromHash() {
+            const h = (window.location.hash || '').replace(/^#/, '').split(/[?&]/)[0];
+            return TABS.indexOf(h) >= 0 ? h : 'jobs';
+        }
+
+        function applyTab(tab) {
+            const prev = currentTab;
+            if (tab === prev) return;
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+            TABS.forEach(t => {
+                document.getElementById(t + 'Panel').style.display = (t === tab) ? 'block' : 'none';
+            });
+            wcSelectInstances.forEach(s => s.close());
+            if (tab === 'jobs' && prev !== null) { loadJobs(); loadStatus(); }
+            if (tab === 'logs') loadLogs();
+            if (tab === 'doctor') loadDoctor();
+            // boot() 已无条件加载一次渠道清单，首次渲染不再重复请求
+            if (tab === 'notify' && prev !== null) loadNotifyChannels();
+        }
+
+        function switchTab(tab) {
+            if (TABS.indexOf(tab) < 0) tab = 'jobs';
+            if (window.location.hash !== '#' + tab) {
+                history.pushState(null, '', '#' + tab);
+            }
+            applyTab(tab);
+        }
+
+        window.addEventListener('popstate', () => applyTab(tabFromHash()));
+        window.addEventListener('hashchange', () => applyTab(tabFromHash()));
+
+        // ---------- 概览与任务 ----------
         async function loadStatus() {
             const data = await api('/status');
             document.getElementById('totalJobs').textContent = data.total_jobs;
@@ -348,15 +658,18 @@
         async function loadJobs() {
             const data = await api('/jobs');
             const tbody = document.getElementById('jobsTableBody');
-            const filter = document.getElementById('jobFilter');
-            filter.innerHTML = '<option value="">全部任务</option>';
+            const jobs = data.jobs || [];
+            selects.jobFilter.setOptions(
+                [{ value: '', label: '全部任务', sub: '' }].concat(jobs.map(j => ({ value: j.id, label: j.name, sub: j.id }))),
+                true
+            );
 
-            if (!data.jobs || data.jobs.length === 0) {
+            if (jobs.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="7" class="empty">暂无任务，点击"添加任务"创建</td></tr>';
                 return;
             }
 
-            tbody.innerHTML = data.jobs.map(j => `
+            tbody.innerHTML = jobs.map(j => `
                 <tr>
                     <td>
                         <label class="toggle">
@@ -378,46 +691,131 @@
                     </td>
                 </tr>
             `).join('');
-
-            data.jobs.forEach(j => {
-                filter.innerHTML += `<option value="${j.id}">${escapeHtml(j.name)}</option>`;
-            });
         }
 
-        async function loadLogs() {
-            const filter = document.getElementById('jobFilter');
-            const jobFilter = filter ? filter.value : '';
-            const url = jobFilter ? `/logs/${jobFilter}?limit=50` : '/logs?limit=50';
-            const data = await api(url);
-            const body = document.getElementById('logsBody');
+        // ---------- 执行日志：内存保留上限 + 分页 ----------
+        const logState = { offset: 0, limit: 20, total: 0, count: 0, hasMore: false, maxEntries: 0, jobFilter: '' };
 
-            if (!data.logs || data.logs.length === 0) {
-                body.innerHTML = '<div class="empty">暂无执行日志</div>';
+        async function loadLogs() {
+            const base = logState.jobFilter
+                ? '/logs/' + encodeURIComponent(logState.jobFilter)
+                : '/logs';
+            const url = base + '?offset=' + logState.offset + '&limit=' + logState.limit;
+            let data;
+            try {
+                data = await api(url);
+            } catch (e) {
+                document.getElementById('logsBody').innerHTML = '<div class="empty">执行日志加载失败</div>';
                 return;
             }
+            logState.total = Number(data.total || 0);
+            logState.count = Number(data.count || 0);
+            logState.hasMore = !!data.has_more;
+            logState.maxEntries = Number(data.max_entries || 0);
 
-            body.innerHTML = data.logs.map(l => `
-                <div class="log-entry">
-                    <div class="log-header">
-                        <span class="log-status">
-                            <span class="badge ${l.success ? 'badge-success' : 'badge-danger'}">${l.success ? '成功' : '失败'}</span>
-                            ${escapeHtml(l.job_name)} (退出码: ${l.exit_code}, 耗时: ${Number(l.duration || 0).toFixed(2)}s)
-                        </span>
-                        <span class="log-time">${l.time}</span>
+            // 筛选条件变化导致 offset 越界时自动回到第一页，而不是停在空白页
+            if (logState.offset > 0 && logState.count === 0 && logState.total > 0) {
+                logState.offset = 0;
+                return loadLogs();
+            }
+
+            const body = document.getElementById('logsBody');
+            if (!data.logs || data.logs.length === 0) {
+                body.innerHTML = '<div class="empty">暂无执行日志</div>';
+            } else {
+                body.innerHTML = data.logs.map(l => `
+                    <div class="log-entry">
+                        <div class="log-header">
+                            <span class="log-status">
+                                <span class="badge ${l.success ? 'badge-success' : 'badge-danger'}">${l.success ? '成功' : '失败'}</span>
+                                ${escapeHtml(l.job_name)} (退出码: ${l.exit_code}, 耗时: ${Number(l.duration || 0).toFixed(2)}s)
+                            </span>
+                            <span class="log-time">${l.time}</span>
+                        </div>
+                        ${l.output ? `<div class="log-output">${escapeHtml(l.output)}</div>` : ''}
+                        ${l.error ? `<div class="log-output" style="color:#c62828;">${escapeHtml(l.error)}</div>` : ''}
                     </div>
-                    ${l.output ? `<div class="log-output">${escapeHtml(l.output)}</div>` : ''}
-                    ${l.error ? `<div class="log-output" style="color:#c62828;">${escapeHtml(l.error)}</div>` : ''}
-                </div>
-            `).join('');
+                `).join('');
+            }
+            renderLogsPager();
+        }
+
+        // 分页控件只创建一次：反复 innerHTML 重建会不断往 body 追加下拉菜单节点，
+        // 也会重复注册全局事件监听器，长时间挂机就会泄漏。
+        let logsLimitReady = false;
+
+        function renderLogsPager() {
+            const start = logState.total === 0 ? 0 : logState.offset + 1;
+            const end = logState.offset + logState.count;
+            const cap = logState.maxEntries > 0
+                ? '　·　内存最多保留 ' + logState.maxEntries + ' 条，更早记录自动淘汰'
+                : '';
+            document.getElementById('logsPagerInfo').textContent =
+                '共 ' + logState.total + ' 条记录，当前显示第 ' + start + '-' + end + ' 条' + cap;
+            document.getElementById('logsPageNum').textContent =
+                '第 ' + (Math.floor(logState.offset / logState.limit) + 1) + ' 页';
+            document.getElementById('logsPrevBtn').disabled = logState.offset <= 0;
+            document.getElementById('logsNextBtn').disabled = !logState.hasMore;
+            if (!logsLimitReady) {
+                selects.logsLimit = new WcSelect('logsLimitSelect', {
+                    tiny: true,
+                    options: [
+                        { value: '20', label: '每页 20 条' },
+                        { value: '50', label: '每页 50 条' },
+                        { value: '100', label: '每页 100 条' }
+                    ],
+                    value: String(logState.limit),
+                    onChange: (v) => { logState.limit = parseInt(v, 10) || 20; logState.offset = 0; loadLogs(); }
+                });
+                logsLimitReady = true;
+            }
+        }
+
+        function gotoLogPage(delta) {
+            const next = logState.offset + delta * logState.limit;
+            if (next < 0 || (delta > 0 && !logState.hasMore)) return;
+            logState.offset = next;
+            loadLogs();
+        }
+
+        function refreshLogs() {
+            logState.offset = 0;
+            loadLogs();
+        }
+
+        // ---------- 运行环境：自适应卡片，无容器内滚动条 ----------
+        function envValueHtml(raw) {
+            const s = (raw === null || raw === undefined) ? '' : String(raw);
+            if (s === '') return '<div class="env-value muted">（未设置）</div>';
+            if (s.length <= 160) return '<div class="env-value">' + escapeHtml(s) + '</div>';
+            return '<div class="env-value env-short">' + escapeHtml(s.substring(0, 160)) + '…</div>' +
+                '<div class="env-value env-full" style="display:none;">' + escapeHtml(s) + '</div>' +
+                '<div class="env-more">' +
+                    '<button class="btn btn-link env-short" onclick="toggleEnvValue(this)">展开完整值（' + s.length + ' 字符）</button>' +
+                    '<button class="btn btn-link env-full" style="display:none;" onclick="toggleEnvValue(this)">收起</button>' +
+                '</div>';
+        }
+
+        function toggleEnvValue(btn) {
+            const item = btn.closest('.env-item');
+            if (!item) return;
+            const expanding = btn.classList.contains('env-short');
+            item.querySelectorAll('.env-short').forEach(el => { el.style.display = expanding ? 'none' : ''; });
+            item.querySelectorAll('.env-full').forEach(el => { el.style.display = expanding ? '' : 'none'; });
         }
 
         async function loadDoctor() {
-            const data = await api('/doctor');
+            let data;
+            try { data = await api('/doctor'); }
+            catch (e) {
+                document.getElementById('doctorBody').innerHTML = '<div class="empty">运行环境信息加载失败</div>';
+                return;
+            }
             const e = data.environment;
             const body = document.getElementById('doctorBody');
             const s0 = e.session_id === 0;
             let html = `
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;">
+                <div class="doctor-grid">
                     <div class="stat-card" style="box-shadow:none;border:1px solid #eee;">
                         <div class="label">Session ID</div>
                         <div class="value ${s0 ? 'green' : 'orange'}" style="font-size:22px;">${e.session_id}</div>
@@ -429,25 +827,31 @@
                     </div>
                     <div class="stat-card" style="box-shadow:none;border:1px solid #eee;">
                         <div class="label">主机 / 系统</div>
-                        <div class="value" style="font-size:14px;">${escapeHtml(e.hostname)}</div>
+                        <div class="value" style="font-size:14px;word-break:break-all;">${escapeHtml(e.hostname)}</div>
                         <div class="hint" style="font-size:11px;color:#888;margin-top:4px;">${e.os} / ${e.arch}</div>
                     </div>
                 </div>
                 <h3 style="font-size:14px;margin:16px 0 8px;">关键环境变量</h3>
-                <div style="background:#f9f9f9;border-radius:6px;padding:12px;font-family:monospace;font-size:12px;line-height:1.8;max-height:220px;overflow:auto;">`;
-            Object.keys(e.key_envs || {}).sort().forEach(k => {
-                html += `<div><span style="color:#888;display:inline-block;width:130px;">${escapeHtml(k)}</span>${escapeHtml(String(e.key_envs[k]).substring(0,200))}</div>`;
-            });
+                <div class="env-grid">`;
+            const keys = Object.keys(e.key_envs || {}).sort();
+            if (keys.length === 0) {
+                html += '<div class="env-item"><div class="env-value muted">未采集到环境变量</div></div>';
+            } else {
+                keys.forEach(k => {
+                    html += '<div class="env-item"><div class="env-key">' + escapeHtml(k) + '</div>' +
+                        envValueHtml(e.key_envs[k]) + '</div>';
+                });
+            }
             html += `</div>
                 <h3 style="font-size:14px;margin:16px 0 8px;">风险提示</h3>
-                <div style="background:#fff8e1;border-left:3px solid #ff9800;padding:12px 16px;border-radius:4px;font-size:13px;line-height:1.9;">`;
-            (e.warnings || []).forEach((w, i) => { html += `<div>${i+1}. ${escapeHtml(w)}</div>`; });
+                <div class="notice-block" style="background:#fff8e1;border-left:3px solid #ff9800;">`;
+            (e.warnings || []).forEach((w, i) => { html += `<div>${i + 1}. ${escapeHtml(w)}</div>`; });
             html += `</div>
                 <h3 style="font-size:14px;margin:16px 0 8px;">编写脚本的建议</h3>
-                <div style="background:#e8f5e9;border-left:3px solid #4caf50;padding:12px 16px;border-radius:4px;font-size:13px;line-height:1.9;">`;
-            (e.suggestions || []).forEach((s, i) => { html += `<div>${i+1}. ${escapeHtml(s)}</div>`; });
+                <div class="notice-block" style="background:#e8f5e9;border-left:3px solid #4caf50;">`;
+            (e.suggestions || []).forEach((s, i) => { html += `<div>${i + 1}. ${escapeHtml(s)}</div>`; });
             html += `</div>
-                <div style="margin-top:16px;font-size:12px;color:#888;">
+                <div class="doctor-note">
                     工作目录: ${escapeHtml(e.working_dir)}<br>
                     可执行程序: ${escapeHtml(e.exe_path)}<br>
                     采集时间: ${escapeHtml(e.collect_time)}
@@ -455,51 +859,137 @@
             body.innerHTML = html;
         }
 
-        function switchTab(tab, btn) {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            if (btn) btn.classList.add('active');
-            document.getElementById('jobsPanel').style.display = tab === 'jobs' ? 'block' : 'none';
-            document.getElementById('logsPanel').style.display = tab === 'logs' ? 'block' : 'none';
-            document.getElementById('doctorPanel').style.display = tab === 'doctor' ? 'block' : 'none';
-            document.getElementById('notifyPanel').style.display = tab === 'notify' ? 'block' : 'none';
-            if (tab === 'logs') loadLogs();
-            if (tab === 'doctor') loadDoctor();
-            if (tab === 'notify') loadNotifyChannels();
+        // ---------- 通知渠道配置 ----------
+        let availableChannels = [];
+        let notifyMeta = { supported: [], required_map: {}, notify_timeout: 10 };
+        let editingJobSnapshot = null;
+        let editingChannel = null;
+
+        const CHANNEL_FIELDS = {
+            http: ['urls'],
+            wecom: ['url', 'mentioned_list', 'mentioned_mobile_list'],
+            lark: ['url'],
+            dingding: ['token', 'secret'],
+            slack: ['token', 'receivers'],
+            telegram: ['token', 'chat_ids'],
+            bark: ['token', 'servers'],
+            mail: ['smtp_host', 'from', 'username', 'password', 'receivers'],
+            msteams: ['receivers'],
+            discord: ['token', 'receivers'],
+            pushover: ['token', 'receivers']
+        };
+
+        const FIELD_META = {
+            url: { label: 'Webhook URL' },
+            urls: { label: 'Webhook URL 列表（每行一个）', multi: true, rows: 3 },
+            token: { label: 'Token / 机器人密钥', secret: true },
+            secret: { label: '加签密钥 Secret', secret: true },
+            username: { label: '用户名（可选）' },
+            password: { label: '密码 / API Key（可选）', secret: true },
+            receivers: { label: '接收目标（每行一个：频道 / 邮箱 / Webhook URL）', multi: true, rows: 3 },
+            chat_ids: { label: 'Chat ID（每行一个数字）', multi: true, numeric: true, rows: 2 },
+            servers: { label: 'Bark 服务器地址（每行一个，可选）', multi: true, rows: 2 },
+            smtp_host: { label: 'SMTP 地址（host:port，如 smtp.example.com:587）' },
+            from: { label: '发件人邮箱' },
+            mentioned_list: { label: '@成员 UserID（每行一个，可选）', multi: true, rows: 2 },
+            mentioned_mobile_list: { label: '@手机号（每行一个，可选）', multi: true, rows: 2 }
+        };
+
+        function splitList(raw) {
+            return String(raw || '').split(/[\n,]/).map(s => s.trim()).filter(Boolean);
         }
 
-        // 通知渠道清单由服务端给出，只含名称/类型/状态，不含任何凭据。
-        let availableChannels = [];
-        let editingJobSnapshot = null;
+        function toggleSecret(btn) {
+            const input = btn.parentElement.querySelector('input');
+            if (!input) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.textContent = show ? '隐藏' : '显示';
+        }
+
+        function renderChannelTypeFields() {
+            const type = selects.channelType.getValue();
+            const required = (notifyMeta.required_map && notifyMeta.required_map[type]) || [];
+            document.getElementById('channelRequiredHint').textContent =
+                required.length ? '必填字段：' + required.join('、') : '该类型无需额外必填字段';
+            const fields = CHANNEL_FIELDS[type] || [];
+            const box = document.getElementById('channelFields');
+            const current = editingChannel || {};
+            if (fields.length === 0) {
+                box.innerHTML = '<div class="form-group"><div class="hint">该类型没有可配置的连接参数。</div></div>';
+                return;
+            }
+            box.innerHTML = fields.map(f => {
+                const meta = FIELD_META[f] || { label: f };
+                const id = 'chf_' + f;
+                const control = meta.multi
+                    ? '<textarea id="' + id + '" rows="' + (meta.rows || 2) + '" placeholder="每行一个"></textarea>'
+                    : (meta.secret
+                        ? '<div class="secret-row"><input type="password" id="' + id + '" autocomplete="off"><button type="button" class="btn btn-link" onclick="toggleSecret(this)">显示</button></div>'
+                        : '<input type="text" id="' + id + '" autocomplete="off">');
+                const hint = meta.multi ? '<div class="hint">多个值请换行分隔，也支持英文逗号分隔</div>' : '';
+                return '<div class="form-group"><label>' + escapeHtml(meta.label) + '</label>' + control + hint + '</div>';
+            }).join('');
+            fields.forEach(f => {
+                const el = document.getElementById('chf_' + f);
+                if (!el) return;
+                const meta = FIELD_META[f] || {};
+                let initial = '';
+                if (meta.multi) {
+                    const arr = current[f] || [];
+                    initial = Array.isArray(arr) ? arr.join('\n') : String(arr);
+                } else {
+                    initial = (current[f] === null || current[f] === undefined) ? '' : String(current[f]);
+                }
+                el.value = initial;
+            });
+        }
 
         async function loadNotifyChannels() {
             const body = document.getElementById('notifyBody');
             try {
                 const data = await api('/notify/channels');
                 availableChannels = data.channels || [];
+                notifyMeta.supported = data.supported || [];
+                notifyMeta.required_map = data.required_map || {};
+                notifyMeta.notify_timeout = data.notify_timeout || 10;
+                document.getElementById('notifyTimeout').value = notifyMeta.notify_timeout;
+
+                selects.channelType.setOptions(notifyMeta.supported.map(t => ({
+                    value: t,
+                    label: t,
+                    sub: (notifyMeta.required_map[t] || []).join(', ')
+                })), true);
+
                 const statuses = {};
                 (data.statuses || []).forEach(s => { if (s.name) statuses[s.name] = s; });
 
                 if (availableChannels.length === 0) {
-                    body.innerHTML = `<div class="empty">尚未配置通知渠道。请在 crontab.json 的 app.notify_channels 中添加。</div>
-                        <div style="margin-top:12px; font-size:13px; color:#666;">
-                            支持的类型：${escapeHtml((data.supported || []).join(' / '))}<br>
-                            可用 <code>wincron notify types</code> 查看每种类型的必填字段。
-                        </div>`;
+                    body.innerHTML = '<div class="empty">尚未配置通知渠道，点击右上角「+ 添加渠道」创建。</div>' +
+                        '<div style="margin-top:12px;font-size:13px;color:#666;">支持的类型：</div>' +
+                        '<div class="type-chips">' + notifyMeta.supported.map(t =>
+                            '<span class="type-chip">' + escapeHtml(t) + '</span>').join('') + '</div>' +
+                        '<div style="margin-top:10px;font-size:12px;color:#999;">也可用命令 <code>wincron notify types</code> 查看每种类型的必填字段。</div>';
                 } else {
                     let html = '<table><thead><tr><th>渠道名称</th><th>类型</th><th>状态</th><th>操作</th></tr></thead><tbody>';
                     availableChannels.forEach(ch => {
                         const st = statuses[ch.name];
                         const ready = st && st.ready;
+                        const problem = st && st.problem ? escapeHtml(st.problem) : '';
                         html += `<tr>
                             <td>${escapeHtml(ch.name)}</td>
                             <td>${escapeHtml(ch.type)}</td>
-                            <td style="color:${ready ? '#2e7d32' : '#c62828'};">${ready ? '可用' : '不可用'}</td>
-                            <td><button class="btn btn-default btn-sm" data-name="${escapeHtml(ch.name)}" onclick="testNotifyChannel(this.dataset.name)" ${ready ? '' : 'disabled'}>测试发送</button></td>
+                            <td style="color:${ready ? '#2e7d32' : '#c62828'};" ${problem ? 'title="' + problem + '"' : ''}>${ready ? '可用' : '不可用'}</td>
+                            <td><div class="actions">
+                                <button class="btn btn-default btn-sm" data-name="${escapeHtml(ch.name)}" onclick="showChannelModal(this.dataset.name)">编辑</button>
+                                <button class="btn btn-default btn-sm" data-name="${escapeHtml(ch.name)}" onclick="testNotifyChannel(this.dataset.name)" ${ready ? '' : 'disabled'}>测试发送</button>
+                                <button class="btn btn-danger btn-sm" data-name="${escapeHtml(ch.name)}" onclick="deleteChannel(this.dataset.name)">删除</button>
+                            </div></td>
                         </tr>`;
                     });
                     html += '</tbody></table>';
-                    (data.build_errors || []).forEach(e => {
-                        html += `<div style="color:#c62828; font-size:13px; margin-top:8px;">${escapeHtml(e)}</div>`;
+                    (data.build_errors || []).forEach(err => {
+                        html += '<div class="channel-error">' + escapeHtml(err) + '</div>';
                     });
                     body.innerHTML = html;
                 }
@@ -507,6 +997,110 @@
             } catch (e) {
                 body.innerHTML = '<div class="empty">通知渠道加载失败</div>';
             }
+        }
+
+        async function showChannelModal(name) {
+            if (notifyMeta.supported.length === 0) {
+                try { await loadNotifyChannels(); } catch (e) {}
+            }
+            editingChannel = null;
+            document.getElementById('channelOriginalName').value = '';
+            document.getElementById('channelName').value = '';
+            document.getElementById('channelName').disabled = false;
+            document.getElementById('channelTimeout').value = '0';
+            selects.channelType.setValue('http', true);
+
+            if (name) {
+                try {
+                    const data = await api('/notify/channels/' + encodeURIComponent(name));
+                    editingChannel = data.channel || {};
+                    document.getElementById('channelModalTitle').textContent = '编辑通知渠道';
+                    document.getElementById('channelOriginalName').value = name;
+                    document.getElementById('channelName').value = editingChannel.name || name;
+                    document.getElementById('channelName').disabled = true;
+                    document.getElementById('channelTimeout').value = editingChannel.timeout || 0;
+                    selects.channelType.setValue(editingChannel.type || 'http', true);
+                } catch (e) { return; }
+            } else {
+                document.getElementById('channelModalTitle').textContent = '添加通知渠道';
+            }
+            renderChannelTypeFields();
+            document.getElementById('channelModal').classList.add('active');
+        }
+
+        function closeChannelModal() {
+            document.getElementById('channelModal').classList.remove('active');
+            editingChannel = null;
+        }
+
+        function collectChannelPayload() {
+            const type = selects.channelType.getValue();
+            const payload = {
+                name: document.getElementById('channelName').value.trim(),
+                type: type,
+                timeout: parseInt(document.getElementById('channelTimeout').value, 10) || 0
+            };
+            (CHANNEL_FIELDS[type] || []).forEach(f => {
+                const el = document.getElementById('chf_' + f);
+                if (!el) return;
+                const meta = FIELD_META[f] || {};
+                if (meta.multi) {
+                    const arr = splitList(el.value);
+                    payload[f] = meta.numeric ? arr.map(Number).filter(n => Number.isFinite(n)) : arr;
+                } else {
+                    payload[f] = el.value.trim();
+                }
+            });
+            return payload;
+        }
+
+        async function saveChannel() {
+            const payload = collectChannelPayload();
+            if (!payload.name) { showToast('请填写渠道名称'); return; }
+            const original = document.getElementById('channelOriginalName').value;
+            if (original) payload.name = original; // 名称不可修改，显式对齐后端校验
+
+            const btn = document.getElementById('saveChannelBtn');
+            btn.disabled = true;
+            try {
+                if (original) {
+                    await api('/notify/channels/' + encodeURIComponent(original), { method: 'PUT', body: JSON.stringify(payload) });
+                } else {
+                    await api('/notify/channels', { method: 'POST', body: JSON.stringify(payload) });
+                }
+                closeChannelModal();
+                showToast('通知渠道已' + (original ? '更新' : '添加') + '，已立即生效', 'success');
+                await loadNotifyChannels();
+            } catch (e) {
+                // 错误已在 api() 里统一提示
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        async function deleteChannel(name) {
+            if (!confirm('确定删除通知渠道「' + name + '」？')) return;
+            try {
+                await api('/notify/channels/' + encodeURIComponent(name), { method: 'DELETE' });
+                showToast('通知渠道已删除', 'success');
+                await loadNotifyChannels();
+            } catch (e) {}
+        }
+
+        async function saveNotifyTimeout() {
+            const v = parseInt(document.getElementById('notifyTimeout').value, 10) || notifyMeta.notify_timeout;
+            try {
+                await api('/notify/settings', { method: 'PUT', body: JSON.stringify({ notify_timeout: v }) });
+                showToast('通知发送超时已保存', 'success');
+                await loadNotifyChannels();
+            } catch (e) {}
+        }
+
+        async function testNotifyChannel(name) {
+            try {
+                await api('/notify/channels/' + encodeURIComponent(name) + '/test', { method: 'POST' });
+                showToast('测试通知已发送：' + name, 'success');
+            } catch (e) {}
         }
 
         function currentSelectedChannels() {
@@ -517,7 +1111,7 @@
             const box = document.getElementById('jobNotifyChannels');
             const chosen = new Set(selected || []);
             if (availableChannels.length === 0) {
-                box.innerHTML = '<span style="color:#999;">未配置通知渠道</span>';
+                box.innerHTML = '<span style="color:#999;">未配置通知渠道，可在「通知渠道」页添加</span>';
                 return;
             }
             box.innerHTML = availableChannels.map(ch => `
@@ -527,13 +1121,7 @@
                 </label>`).join('');
         }
 
-        async function testNotifyChannel(name) {
-            try {
-                await api('/notify/channels/' + encodeURIComponent(name) + '/test', { method: 'POST' });
-                showToast('测试通知已发送：' + name, 'success');
-            } catch (e) {}
-        }
-
+        // ---------- 任务弹窗 ----------
         function showAddModal() {
             document.getElementById('modalTitle').textContent = '添加任务';
             document.getElementById('jobId').value = '';
@@ -543,7 +1131,7 @@
             document.getElementById('jobWorkDir').value = '';
             document.getElementById('jobTimeout').value = '0';
             document.getElementById('jobMaxRetry').value = '0';
-            document.getElementById('jobEnabled').value = 'true';
+            selects.jobEnabled.setValue('true', true);
             document.getElementById('jobNotifyFailure').checked = false;
             document.getElementById('jobNotifySuccess').checked = false;
             editingJobSnapshot = null;
@@ -562,7 +1150,7 @@
             document.getElementById('jobWorkDir').value = j.work_dir || '';
             document.getElementById('jobTimeout').value = j.timeout || 0;
             document.getElementById('jobMaxRetry').value = j.max_retry || 0;
-            document.getElementById('jobEnabled').value = String(j.enabled);
+            selects.jobEnabled.setValue(String(j.enabled), true);
             document.getElementById('jobNotifyFailure').checked = !!(j.notify && j.notify.on_failure);
             document.getElementById('jobNotifySuccess').checked = !!(j.notify && j.notify.on_success);
             // 保留表单没有暴露的字段（例如 env），避免「编辑一次就丢配置」。
@@ -583,9 +1171,9 @@
                 cron: document.getElementById('jobCron').value,
                 command: document.getElementById('jobCommand').value,
                 work_dir: document.getElementById('jobWorkDir').value,
-                timeout: parseInt(document.getElementById('jobTimeout').value) || 0,
-                max_retry: parseInt(document.getElementById('jobMaxRetry').value) || 0,
-                enabled: document.getElementById('jobEnabled').value === 'true',
+                timeout: parseInt(document.getElementById('jobTimeout').value, 10) || 0,
+                max_retry: parseInt(document.getElementById('jobMaxRetry').value, 10) || 0,
+                enabled: selects.jobEnabled.getValue() === 'true',
                 notify: {
                     on_failure: document.getElementById('jobNotifyFailure').checked,
                     on_success: document.getElementById('jobNotifySuccess').checked,
@@ -633,7 +1221,10 @@
             try {
                 await api('/jobs/' + id + '/run', { method: 'POST' });
                 showToast('任务已触发执行', 'success');
-                setTimeout(() => loadLogs(), 2000);
+                setTimeout(() => {
+                    logState.offset = 0;
+                    if (currentTab === 'logs') loadLogs();
+                }, 2000);
             } catch (e) {}
         }
 
@@ -651,11 +1242,38 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
-        // 初始加载
-        loadAuthStatus();
-        loadStatus();
-        loadJobs();
-        loadNotifyChannels();
+        // ---------- 初始化 ----------
+        selects.jobFilter = new WcSelect('jobFilterSelect', {
+            compact: true,
+            options: [{ value: '', label: '全部任务' }],
+            value: '',
+            placeholder: '全部任务',
+            onChange: (v) => { logState.jobFilter = v; logState.offset = 0; loadLogs(); },
+            onReset: (v) => {
+                logState.jobFilter = v;
+                logState.offset = 0;
+                if (currentTab === 'logs') loadLogs();
+            }
+        });
+        selects.jobEnabled = new WcSelect('jobEnabledSelect', {
+            options: [{ value: 'true', label: '启用' }, { value: 'false', label: '禁用' }],
+            value: 'true'
+        });
+        selects.channelType = new WcSelect('channelTypeSelect', {
+            options: [{ value: 'http', label: 'http', sub: 'urls' }],
+            value: 'http',
+            onChange: () => { editingChannel = null; renderChannelTypeFields(); }
+        });
+        selects.logsLimit = null; // 首次 renderLogsPager 时创建
+
+        async function boot() {
+            await loadAuthStatus();
+            loadStatus();
+            loadJobs();
+            loadNotifyChannels();
+            applyTab(tabFromHash());
+        }
+        boot();
 
         // 定时刷新
         setInterval(loadStatus, 10000);

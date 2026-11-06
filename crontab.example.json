@@ -11,6 +11,8 @@
     "web_password": "CHANGE_ME_BEFORE_USE",
     "log_dir": "logs",
     "log_retention_days": 30,
+    "log_max_entries": 500,
+    "log_max_file_mb": 10,
     "enable_seconds": true,
     "notify_timeout": 10,
     "notify_channels": [

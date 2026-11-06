@@ -84,6 +84,10 @@ func (s *Scheduler) Start() error {
 		if s.notifier != nil && cfg != nil {
 			s.notifier.Reload(cfg.App.NotifyChannels, cfg.App.NotifyTimeout)
 		}
+		// 日志上限也支持热加载，改完配置不必重启服务
+		if s.executor != nil && cfg != nil {
+			s.executor.SetLimits(cfg.App.LogMaxEntries, int64(cfg.App.LogMaxFileMB)<<20)
+		}
 		if err := s.Reload(); err != nil {
 			fmt.Printf("[WinCron] 配置热加载失败: %v\n", err)
 		}

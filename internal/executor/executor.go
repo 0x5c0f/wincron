@@ -48,10 +48,12 @@ type LogEntry struct {
 
 // Executor 任务执行器
 type Executor struct {
-	logDir      string
-	logEntries  []LogEntry
-	mu          sync.RWMutex
-	maxLogCount int
+	logDir       string
+	logEntries   []LogEntry
+	mu           sync.RWMutex
+	maxLogCount  int        // 内存中保留的日志条数上限，可由 app.log_max_entries 调整
+	maxFileBytes int64      // 单个任务日志文件大小上限，可由 app.log_max_file_mb 调整
+	fileMu       sync.Mutex // 串行化「检查大小 -> 裁剪 -> 追加」，避免并发执行同一任务时互相覆盖
 
 	stopCh    chan struct{}
 	closeOnce sync.Once
@@ -66,15 +68,37 @@ func NewExecutor(logDir string) *Executor {
 		logDir = "logs"
 	}
 	return &Executor{
-		logDir:      paths.Resolve(logDir),
-		maxLogCount: 500,
-		stopCh:      make(chan struct{}),
+		logDir:       paths.Resolve(logDir),
+		maxLogCount:  500,
+		maxFileBytes: 10 << 20,
+		stopCh:       make(chan struct{}),
 	}
 }
 
 // LogDir 返回实际使用的日志目录
 func (e *Executor) LogDir() string {
 	return e.logDir
+}
+
+// SetLimits 运行时调整日志保留上限，服务启动与配置热加载都会调用。
+// 调小上限时立即裁剪内存中的历史条目，避免配置改了却继续占用内存。
+func (e *Executor) SetLimits(maxEntries int, maxFileBytes int64) {
+	if maxEntries < 10 {
+		maxEntries = 10
+	}
+	if maxEntries > 100000 {
+		maxEntries = 100000
+	}
+	if maxFileBytes < 1024 {
+		maxFileBytes = 1024
+	}
+	e.mu.Lock()
+	e.maxLogCount = maxEntries
+	e.maxFileBytes = maxFileBytes
+	if len(e.logEntries) > e.maxLogCount {
+		e.logEntries = append([]LogEntry(nil), e.logEntries[len(e.logEntries)-e.maxLogCount:]...)
+	}
+	e.mu.Unlock()
 }
 
 // Close 停止日志清理等后台协程，服务退出时调用
@@ -259,8 +283,56 @@ func safeLogName(id string) string {
 	return clean
 }
 
+// trimLogFile 在日志文件即将超过上限时先裁剪到一半，只保留最近的完整记录。
+//
+// 只按天数清理是不够的：一个每分钟执行、每次输出几 KB 的任务，在保留期内
+// 就能把单个 .log 撑到几百 MB。这里用「超过上限就保留后一半」的方式给文件
+// 一个硬上界，同时不引入 .1/.2 轮转文件带来的清理复杂度。
+func (e *Executor) trimLogFile(path string, incoming int) {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	e.mu.RLock()
+	limit := e.maxFileBytes
+	e.mu.RUnlock()
+	if limit <= 0 || fi.Size()+int64(incoming) <= limit {
+		return
+	}
+
+	keep := limit / 2
+	if keep < 1024 {
+		keep = 1024
+	}
+	if keep > fi.Size() {
+		keep = fi.Size()
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if _, err := f.Seek(fi.Size()-keep, io.SeekStart); err != nil {
+		return
+	}
+	tail, err := io.ReadAll(f)
+	if err != nil {
+		return
+	}
+	// 从下一个换行开始保留，避免把半条记录写进文件开头
+	if i := bytes.IndexByte(tail, '\n'); i >= 0 {
+		tail = tail[i+1:]
+	}
+	trimmed := append([]byte("[WinCron] 日志已达大小上限，已保留最近内容（更早记录被裁剪）\n"), tail...)
+	if err := os.WriteFile(path, trimmed, 0644); err != nil {
+		fmt.Printf("[WinCron] 裁剪日志失败 (%s): %v\n", path, err)
+	}
+}
+
 // writeLogFile 写入文件日志
 func (e *Executor) writeLogFile(entry *LogEntry) {
+	e.fileMu.Lock()
+	defer e.fileMu.Unlock()
 	logFile := filepath.Join(e.logDir, safeLogName(entry.JobID)+".log")
 
 	var buf bytes.Buffer
@@ -288,6 +360,7 @@ func (e *Executor) writeLogFile(entry *LogEntry) {
 	buf.WriteString(strings.Repeat("=", 60))
 	buf.WriteString("\n\n")
 
+	e.trimLogFile(logFile, buf.Len())
 	f, err := openAppend(logFile)
 	if err != nil {
 		fmt.Printf("[WinCron] 写日志失败 (%s): %v\n", logFile, err)
@@ -367,4 +440,33 @@ func (e *Executor) GetLogs(jobID string, limit int) []LogEntry {
 // GetAllLogs 获取所有日志
 func (e *Executor) GetAllLogs(limit int) []LogEntry {
 	return e.GetLogs("", limit)
+}
+
+// GetLogsPage 按「最新在前」分页返回日志，并给出匹配的总条数。
+// total 用于前端计算页数；日志总量本身由 maxLogCount 约束，不会无限增长。
+func (e *Executor) GetLogsPage(jobID string, offset, limit int) ([]LogEntry, int) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	matched := make([]LogEntry, 0)
+	for i := len(e.logEntries) - 1; i >= 0; i-- {
+		if jobID == "" || e.logEntries[i].JobID == jobID {
+			matched = append(matched, e.logEntries[i])
+		}
+	}
+	total := len(matched)
+	if limit <= 0 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= total {
+		return []LogEntry{}, total
+	}
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+	return append([]LogEntry(nil), matched[offset:end]...), total
 }
